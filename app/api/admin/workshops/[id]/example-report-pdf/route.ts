@@ -186,7 +186,7 @@ const LABEL_TO_PHASE_KEY: Record<string, string> = {
   Corporate: 'operations',
   Technology: 'technology',
   Commercial: 'commercial',
-  Customer: 'commercial',
+  Customer: 'customer',
   'Risk/Compliance': 'risk_compliance',
   Regulation: 'risk_compliance',
   Finance: 'finance',

@@ -14,6 +14,7 @@ const LENS_COLOURS: Record<string, string> = {
   Operations:   'bg-emerald-100 text-emerald-700',
   Technology:   'bg-orange-100 text-orange-700',
   Commercial:   'bg-yellow-100 text-yellow-700',
+  Customer:     'bg-amber-100 text-amber-700',
   'Risk/Compliance': 'bg-red-100 text-red-700',
   Finance:      'bg-green-100 text-green-700',
   Partners:     'bg-indigo-100 text-indigo-700',

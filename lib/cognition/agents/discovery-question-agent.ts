@@ -237,6 +237,7 @@ GTM lens interpretation rules:
 - Operations: where delivery capability shapes what can be sold, where delivery breaks the promise made in the sale, and where the operating model limits commercial success.
 - Technology: how technology enables, constrains, or differentiates the proposition, and where the technology reality falls short of what is promised to the market.
 - Commercial: who the business wins with, who it loses with, what patterns exist in deals, what the buyer values, and what the market is actually buying.
+- Customer: what customers experience after the sale, where trust is won or lost, and what drives retention, expansion, or churn.
 - Risk/Compliance: where risk, procurement, approvals, or compliance shape deal viability, speed, and commercial opportunity.
 - Partners: how partners strengthen or weaken the ability to win and deliver, and where partner dependencies create deal or delivery risk.
 
@@ -284,6 +285,7 @@ Transformation lens interpretation rules:
 - Operations: where the current operating model, handoffs, or decision flow make the target state hard to reach.
 - Technology: where technology enables or blocks the future state, and where current architecture constrains change.
 - Commercial: where market expectations, customer promises, or growth priorities increase pressure for change.
+- Customer: where journeys, trust, or service reality force transformation and what the future state must improve externally.
 - Risk/Compliance: where controls, approvals, or governance help or slow transformation.
 - Partners: where external dependencies accelerate or block the transformation path.
 
@@ -538,8 +540,8 @@ function executeDiscoveryTool(
         return {
           result: JSON.stringify({
             available: false,
-            note: 'No domain pack configured. Use the canonical workshop lenses from the blueprint: People, Operations, Technology, Commercial, Risk/Compliance, Partners.',
-            defaultLenses: ['People', 'Operations', 'Technology', 'Commercial', 'Risk/Compliance', 'Partners'],
+            note: 'No domain pack configured. Use the canonical workshop lenses from the blueprint: People, Operations, Technology, Commercial, Customer, Risk/Compliance, Partners.',
+            defaultLenses: ['People', 'Operations', 'Technology', 'Commercial', 'Customer', 'Risk/Compliance', 'Partners'],
           }),
           summary: '**Domain pack:** Not configured. Using canonical workshop lenses from the blueprint.',
         };
@@ -1465,6 +1467,11 @@ type TransformationDiscoverySignal =
   | 'customer_expectation_risk'
   | 'growth_dependency'
   | 'commercial_tradeoff'
+  | 'journey_breakdown'
+  | 'trust_gap'
+  | 'customer_effort'
+  | 'service_failure'
+  | 'experience_expectation_gap'
   | 'approval_friction'
   | 'governance_drag'
   | 'control_dependency'
@@ -1634,6 +1641,11 @@ type FinanceDiscoverySignal =
   | 'value_mismatch'
   | 'pricing_pressure'
   | 'commercial_drag'
+  | 'retention_value'
+  | 'churn_cost'
+  | 'service_expectation_gap'
+  | 'experience_loyalty'
+  | 'customer_effort_cost'
   | 'approval_cost'
   | 'control_drag'
   | 'compliance_overhead'
@@ -2230,6 +2242,33 @@ function buildAiTripleRatingScale(
         `The business can see clearly where AI would create a stronger and more credible customer proposition.`,
       ],
     },
+    Customer: {
+      customer_value_opportunity: [
+        `It is not yet clear where AI would improve ${profile.customerValueFocus} in ways customers would genuinely notice.`,
+        `Some customer-facing AI opportunities are visible, but they are not yet sharp enough to guide prioritisation confidently.`,
+        `There are clear customer moments where AI could improve experience, responsiveness, or value in a way customers would genuinely feel.`,
+      ],
+      promise_risk: [
+        `AI would create too much risk of promising a better customer experience than the business could actually sustain.`,
+        `Some AI-led customer promises could be made credibly, but the risk of overclaiming is still material.`,
+        `The business can separate credible customer-facing AI improvements from promises that would weaken trust.`,
+      ],
+      service_gain: [
+        `It is not yet clear where AI would make the customer experience meaningfully smoother or faster.`,
+        `Some customer service gains are visible, but they are still inconsistent across the journey.`,
+        `Customer-facing service gains are clear enough that AI could be targeted where it would reduce effort or delay most.`,
+      ],
+      trust_risk: [
+        `AI would create too much trust risk in customer moments that matter most.`,
+        `Some customer trust risk is manageable, but it still limits where AI can be used confidently.`,
+        `Customer trust risks are understood well enough that AI can be introduced without eroding confidence.`,
+      ],
+      differentiation_opportunity: [
+        `It is not yet clear where AI would create a meaningfully better customer relationship rather than generic novelty.`,
+        `Some differentiation opportunity is visible, but it is still too uneven in the customer journey.`,
+        `The business can see clearly where AI would make the customer experience feel stronger, faster, or more responsive.`,
+      ],
+    },
     'Risk/Compliance': {
       governance_requirement: [
         `${profile.governanceFocus} are too underdeveloped for AI to be introduced safely in important work.`,
@@ -2413,6 +2452,36 @@ function buildAiLensPlan(lens: string): AiLensPlan {
           tag: 'working',
           purpose: 'Show where AI could strengthen the proposition meaningfully.',
           buildQuestion: (profile) => `What happens in the areas where AI could most clearly strengthen the value customers receive?`,
+        },
+      ],
+    },
+    Customer: {
+      tripleSignal: 'customer_value_opportunity',
+      tripleFocus: 'whether AI could improve the lived customer experience in ways people would actually notice',
+      exploratory: [
+        {
+          signal: 'service_gain',
+          tag: 'working',
+          purpose: 'Reveal where AI could visibly improve customer responsiveness or quality.',
+          buildQuestion: (profile) => `Where in the customer journey would AI most clearly improve responsiveness, quality, or ease for customers at ${profile.company}?`,
+        },
+        {
+          signal: 'trust_risk',
+          tag: 'constraint',
+          purpose: 'Surface where AI could damage customer confidence.',
+          buildQuestion: (profile) => `Where would customers be least willing to accept AI because trust or reassurance matters too much?`,
+        },
+        {
+          signal: 'promise_risk',
+          tag: 'pain_points',
+          purpose: 'Identify where AI-led promises could outrun operational reality.',
+          buildQuestion: (profile) => `Where would it be easiest to overpromise a better customer experience with AI before the business could actually deliver it?`,
+        },
+        {
+          signal: 'differentiation_opportunity',
+          tag: 'gaps',
+          purpose: 'Show where AI could create a more distinctive customer experience.',
+          buildQuestion: (profile) => `Where could AI make the customer experience feel meaningfully different from alternatives rather than just more automated?`,
         },
       ],
     },
@@ -2727,6 +2796,33 @@ function buildFinanceTripleRatingScale(
         `Commercial choices support healthier economics and reduce avoidable drag through delivery.`,
       ],
     },
+    Customer: {
+      retention_value: [
+        `Customer relationships are not stable enough yet to protect value in ${profile.commercialValueFocus}.`,
+        `Some customer relationships are healthy, but retention value still varies too much across the base.`,
+        `Customer relationships are strong enough that retention consistently protects value rather than leaking it.`,
+      ],
+      churn_cost: [
+        `Customer loss is creating more avoidable value leakage than the business can currently explain or absorb.`,
+        `Some churn patterns are understood, but customer loss still destroys too much value in important areas.`,
+        `Churn is understood and controlled well enough that avoidable customer loss no longer weakens value materially.`,
+      ],
+      service_expectation_gap: [
+        `Customer expectations are out of line with what the business can deliver economically.`,
+        `Some expectation gaps are known, but they still create weak-value work and avoidable recovery effort.`,
+        `Customer expectations are shaped well enough that service remains supportable and value-positive.`,
+      ],
+      experience_loyalty: [
+        `The customer experience is not strong enough yet to create reliable loyalty or repeat value.`,
+        `Some loyalty drivers are visible, but the experience is still too inconsistent to protect value fully.`,
+        `The customer experience is strong enough that loyalty and repeat value reinforce the economics.`,
+      ],
+      customer_effort_cost: [
+        `Customers still face enough friction that the business absorbs avoidable service cost and lost value.`,
+        `Some customer effort has been reduced, but friction still creates too much avoidable cost in key journeys.`,
+        `Customer effort is low enough that the experience supports value rather than creating hidden cost.`,
+      ],
+    },
     'Risk/Compliance': {
       approval_cost: [
         `${profile.controlValueFocus} add enough approval effort that value is lost before the work even moves.`,
@@ -2910,6 +3006,36 @@ function buildFinanceLensPlan(lens: string): FinanceLensPlan {
           tag: 'working',
           purpose: 'Show where commercial choices already protect value.',
           buildQuestion: (profile) => `What happens in the work that the business prices, scopes, and shapes well enough to protect value through delivery?`,
+        },
+      ],
+    },
+    Customer: {
+      tripleSignal: 'retention_value',
+      tripleFocus: 'how strongly the customer relationship protects value instead of leaking it',
+      exploratory: [
+        {
+          signal: 'churn_cost',
+          tag: 'pain_points',
+          purpose: 'Reveal where customer loss is destroying value.',
+          buildQuestion: () => `Where do you see customer loss or weak renewal behaviour creating the clearest value leakage today?`,
+        },
+        {
+          signal: 'service_expectation_gap',
+          tag: 'constraint',
+          purpose: 'Identify where customer expectations create weak-value work.',
+          buildQuestion: () => `Where are customer expectations hardest to meet without creating too much effort or unattractive economics?`,
+        },
+        {
+          signal: 'customer_effort_cost',
+          tag: 'gaps',
+          purpose: 'Surface where customer friction creates avoidable cost.',
+          buildQuestion: () => `Where does customer effort or repeated chasing create the most avoidable cost-to-serve?`,
+        },
+        {
+          signal: 'experience_loyalty',
+          tag: 'working',
+          purpose: 'Show where the experience already protects value through loyalty.',
+          buildQuestion: () => `What happens in the parts of the customer experience that already create strong loyalty or repeat value?`,
         },
       ],
     },
@@ -3167,6 +3293,33 @@ function buildOperationsTripleRatingScale(
         `Customers receive enough operational consistency that trust is strengthened rather than weakened.`,
       ],
     },
+    Customer: {
+      service_pain: [
+        `${profile.customerImpactFocus} still creates too much friction in the lived customer experience.`,
+        `Some customer pain has been reduced, but too much inconsistency still shows up in key journeys.`,
+        `The lived customer experience feels reliable enough that operational performance strengthens trust rather than weakening it.`,
+      ],
+      expectation_gap: [
+        `Customers are still experiencing a gap between what they expect and what the operation can reliably deliver.`,
+        `Some expectation gaps are understood, but they still appear too often in live service moments.`,
+        `Customer expectations and lived experience are aligned closely enough that confidence is protected.`,
+      ],
+      value_breakdown: [
+        `Operational friction still gets in the way of customers feeling the value they were meant to receive.`,
+        `Some value loss has been reduced, but too many customer moments still feel harder than they should.`,
+        `Customers receive the intended value consistently enough that service feels dependable and worthwhile.`,
+      ],
+      customer_delay: [
+        `Customers still experience enough delay or chasing that confidence in the service is weakened.`,
+        `Some customer delay has improved, but it still appears too often in important journeys.`,
+        `Customer-facing delay is low enough that the service feels responsive and under control.`,
+      ],
+      confidence_signal: [
+        `The lived experience still gives customers too many reasons to doubt the service.`,
+        `Some strong confidence signals exist, but inconsistency still damages trust in important moments.`,
+        `Customers receive enough consistency, clarity, and recovery that trust is strengthened over time.`,
+      ],
+    },
     'Risk/Compliance': {
       approval_delay: [
         `${profile.controlFocus} create approval delay that repeatedly slows the flow of work.`,
@@ -3350,6 +3503,36 @@ function buildOperationsLensPlan(lens: string): OperationsLensPlan {
           tag: 'working',
           purpose: 'Show where operations already strengthen trust.',
           buildQuestion: (profile) => `What happens in the moments where operational performance most clearly strengthens customer confidence in the service?`,
+        },
+      ],
+    },
+    Customer: {
+      tripleSignal: 'service_pain',
+      tripleFocus: 'how the operation shows up in the lived customer experience',
+      exploratory: [
+        {
+          signal: 'customer_delay',
+          tag: 'pain_points',
+          purpose: 'Reveal where customers feel delay most clearly.',
+          buildQuestion: (profile) => `Where do customers most clearly feel delay or have to chase because ${profile.serviceFlowFocus} is not flowing cleanly?`,
+        },
+        {
+          signal: 'expectation_gap',
+          tag: 'gaps',
+          purpose: 'Identify where service experience falls short of expectation.',
+          buildQuestion: () => `Where does the customer experience fall furthest short of what people expect from this service today?`,
+        },
+        {
+          signal: 'confidence_signal',
+          tag: 'constraint',
+          purpose: 'Surface where inconsistency weakens trust.',
+          buildQuestion: () => `Where does inconsistency in day-to-day delivery do the most damage to customer confidence?`,
+        },
+        {
+          signal: 'value_breakdown',
+          tag: 'working',
+          purpose: 'Show where the operation already creates a strong customer outcome.',
+          buildQuestion: () => `What happens in the parts of the service where customers clearly get the value they expected without unnecessary effort?`,
         },
       ],
     },
@@ -3607,6 +3790,33 @@ function buildTransformationTripleRatingScale(
         `Commercial trade-offs are explicit enough that the future state can be prioritised with discipline.`,
       ],
     },
+    Customer: {
+      journey_breakdown: [
+        `Current customer journeys break down often enough that ${profile.futureStateFocus} would not feel real externally.`,
+        `Some customer journey issues are known, but they still create too much friction for the target state to feel credible.`,
+        `Customer journeys are stable enough that the future state could be felt clearly by customers rather than just described internally.`,
+      ],
+      trust_gap: [
+        `Customer trust is too weak or too inconsistent for the target state to land credibly.`,
+        `Some trust is present, but current experience still creates doubt in important customer moments.`,
+        `Customer trust is strong enough that the future-state ambition would feel believable in practice.`,
+      ],
+      customer_effort: [
+        `Customers still have to work too hard to get value from the current model.`,
+        `Some effort has been reduced, but key journeys still ask too much of customers today.`,
+        `Customer effort is low enough that the future state could build from a credible experience base.`,
+      ],
+      service_failure: [
+        `Service failures still show up often enough that they undermine the case for change.`,
+        `Some service failure patterns are understood, but they still distort what the target state must solve first.`,
+        `Service failures are contained enough that the transformation can focus on deliberate improvement rather than constant recovery.`,
+      ],
+      experience_expectation_gap: [
+        `There is still a material gap between what customers expect and what the current model delivers.`,
+        `Some expectation gaps are visible, but they still blur what the future state must fix first.`,
+        `Customer expectations are explicit enough that they sharpen the transformation priorities rather than confuse them.`,
+      ],
+    },
     'Risk/Compliance': {
       approval_friction: [
         `${profile.governanceAnchor} create approval drag that will slow the target state materially.`,
@@ -3790,6 +4000,36 @@ function buildTransformationLensPlan(lens: string): TransformationLensPlan {
           tag: 'working',
           purpose: 'Surface where commercial priorities are already helping focus change.',
           buildQuestion: (profile) => `What happens in the areas where customer promises and growth priorities are already helping the room focus on the right change?`,
+        },
+      ],
+    },
+    Customer: {
+      tripleSignal: 'journey_breakdown',
+      tripleFocus: 'how clearly customers would feel the future state versus today’s broken journey',
+      exploratory: [
+        {
+          signal: 'experience_expectation_gap',
+          tag: 'gaps',
+          purpose: 'Reveal where the current experience falls shortest against expectation.',
+          buildQuestion: () => `Where do customers feel the biggest gap today between what they expect and what the current model actually gives them?`,
+        },
+        {
+          signal: 'customer_effort',
+          tag: 'pain_points',
+          purpose: 'Surface where customers work too hard in the current model.',
+          buildQuestion: () => `Where in the current journey do customers have to work too hard just to get the outcome they expected?`,
+        },
+        {
+          signal: 'trust_gap',
+          tag: 'constraint',
+          purpose: 'Identify where trust has to be rebuilt for the future state to land.',
+          buildQuestion: () => `Where has the current experience weakened customer trust enough that the future state would need to rebuild it deliberately?`,
+        },
+        {
+          signal: 'service_failure',
+          tag: 'working',
+          purpose: 'Show where the current experience already supports the target state.',
+          buildQuestion: (profile) => `What happens in the parts of the customer journey that already feel closest to the experience ${profile.futureStateFocus} is meant to create?`,
         },
       ],
     },
@@ -4033,6 +4273,48 @@ function buildGtmTripleRatingScale(
       differentiation: [``, ``, ``],
       misalignment: [``, ``, ``],
     },
+    Customer: {
+      ICP: [
+        `${profile.company} does not yet understand clearly which customer relationships turn into healthy, repeatable growth after the sale.`,
+        `Some strong customer relationship patterns are visible, but they are not yet shaping the business consistently enough.`,
+        `${profile.company} can distinguish clearly which customer relationships create long-term trust, retention, and expansion potential.`,
+      ],
+      anti_ICP: [
+        `Some customer relationships look attractive at sale but become too fragile, effort-heavy, or low-trust to keep healthy.`,
+        `Some weak-fit customer relationships are recognised, but the pattern still distorts retention and account effort.`,
+        `${profile.company} can spot the customer relationships that weaken retention or trust before they absorb more effort.`,
+      ],
+      win_pattern: [
+        `The business does not yet understand clearly what customers value most once they are living with the offer.`,
+        `Some post-sale customer value patterns are visible, but they are not yet sharp enough to guide repeatability confidently.`,
+        `Customer value patterns are clear enough that the business can reinforce what drives retention, trust, and expansion.`,
+      ],
+      loss_pattern: [
+        `Customer loss still reveals repeat experience problems too late for the business to learn from them consistently.`,
+        `Some churn or trust-loss patterns are understood, but they still recur in important accounts.`,
+        `Loss patterns are visible early enough that the business can reduce customer churn and trust erosion before they repeat.`,
+      ],
+      constraint: [
+        `The lived customer experience still constrains how credibly ${profile.company} can retain or expand the right accounts.`,
+        `Some customer relationships are strong, but experience constraints still weaken renewal or expansion confidence in important areas.`,
+        `The customer experience is strong enough that the right accounts can renew, grow, and advocate with confidence.`,
+      ],
+      misalignment: [
+        `What customers were sold and what they then experience still diverge too often after the deal is won.`,
+        `Some accounts stay aligned, but the lived experience still diverges from the commercial promise in important moments.`,
+        `The lived customer experience aligns closely enough with the promise that trust is reinforced after sale.`,
+      ],
+      differentiation: [
+        `Customers do not yet experience enough after the sale to make ${profile.company} feel meaningfully different.`,
+        `Some accounts feel a differentiated experience, but it is not yet consistent enough across target relationships.`,
+        `Customers experience a relationship distinct enough to strengthen retention, advocacy, and expansion in the right accounts.`,
+      ],
+      fragility: [
+        `Important customer relationships still become fragile after the sale because trust or experience breaks down.`,
+        `Some fragile relationships are known, but they still consume disproportionate effort once live.`,
+        `Customer relationships are stable enough after the sale that they do not undermine the growth path.`,
+      ],
+    },
     'Risk/Compliance': {
       constraint: [
         `${profile.riskFocus} repeatedly slows or blocks target opportunities after pursuit effort is already committed.`,
@@ -4224,6 +4506,36 @@ function buildSignalFirstGtmLensPlan(lens: string): GtmLensPlan {
           tag: 'pain_points',
           purpose: 'Surface wins that looked good at sale but damaged commercial quality later.',
           buildQuestion: (profile) => `Which won deals now look like the wrong work because they weakened delivery credibility, references, or repeatability after signature?`,
+        },
+      ],
+    },
+    Customer: {
+      tripleSignal: 'misalignment',
+      tripleFocus: 'how closely the lived customer experience matches what was sold',
+      exploratory: [
+        {
+          signal: 'win_pattern',
+          tag: 'working',
+          purpose: 'Identify what customers value once they are living with the offer.',
+          buildQuestion: (profile) => `In your strongest customer relationships, what do customers end up valuing most once they are actually living with ${profile.propositionFocus}?`,
+        },
+        {
+          signal: 'loss_pattern',
+          tag: 'pain_points',
+          purpose: 'Surface what repeated churn or trust loss is revealing.',
+          buildQuestion: (profile) => `When customers drift away or reduce scope, what tends to have gone wrong in the experience they actually had?`,
+        },
+        {
+          signal: 'fragility',
+          tag: 'constraint',
+          purpose: 'Show where customer relationships become unstable after sale.',
+          buildQuestion: (profile) => `Which customer relationships become hardest to keep healthy once the deal is live, and what makes them so fragile?`,
+        },
+        {
+          signal: 'differentiation',
+          tag: 'gaps',
+          purpose: 'Reveal where the customer experience is not yet distinct enough.',
+          buildQuestion: (profile) => `Where does the customer experience still feel too similar to alternatives after the contract is signed?`,
         },
       ],
     },

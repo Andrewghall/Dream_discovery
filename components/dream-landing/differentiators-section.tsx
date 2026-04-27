@@ -16,7 +16,7 @@ const DIFFERENTIATORS = [
     tagline: 'Multiple specialist agents orchestrated together. Not a chatbot wrapper.',
     colour: 'from-[#5cf28e] to-[#50c878]',
     details: [
-      'Discovery Agent  -  conducts structured AI conversations across five organisational domains, adapting questions in real-time',
+      'Discovery Agent  -  conducts structured AI conversations across seven organisational domains, adapting questions in real-time',
       'Facilitation Orchestrator  -  coordinates live workshop phases, handing off between specialist agents that generate questions, cluster themes, and synthesise insights',
       'Deterministic analytics  -  sentiment, bias, and balance scores are computed reproducibly alongside the agentic layer, not hallucinated by an LLM',
     ],

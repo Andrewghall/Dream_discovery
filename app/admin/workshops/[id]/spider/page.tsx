@@ -57,7 +57,7 @@ type SpiderApiResponse = {
   error?: string;
 };
 
-type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6';
+type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D7';
 
 const FOCUS_OPTIONS: Array<{ value: Focus; label: string }> = [
   { value: 'MASTER', label: 'Master overview' },
@@ -65,8 +65,9 @@ const FOCUS_OPTIONS: Array<{ value: Focus; label: string }> = [
   { value: 'D2', label: 'D2 — Operations' },
   { value: 'D3', label: 'D3 — Technology' },
   { value: 'D4', label: 'D4 — Commercial' },
-  { value: 'D5', label: 'D5 — Risk / Compliance' },
-  { value: 'D6', label: 'D6 — Partners' },
+  { value: 'D5', label: 'D5 — Customer' },
+  { value: 'D6', label: 'D6 — Risk / Compliance' },
+  { value: 'D7', label: 'D7 — Partners' },
 ];
 
 type AssumptionsApiResponse = {
@@ -163,7 +164,8 @@ function axisKeyForFocus(focus: Focus): AxisKey | null {
   if (focus === 'D3') return 'technology';
   if (focus === 'D4') return 'commercial';
   if (focus === 'D5') return 'risk_compliance';
-  if (focus === 'D6') return 'partners';
+  if (focus === 'D6') return 'risk_compliance';
+  if (focus === 'D7') return 'partners';
   return null;
 }
 

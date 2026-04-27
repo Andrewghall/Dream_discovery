@@ -43,7 +43,7 @@ const SYSTEM_PROMPT = `You are an expert business analyst working for DREAM, an 
 
 Your task is to analyse an extracted document and produce a structured JSON evidence record.
 
-DREAM uses five lenses: People, Organisation, Customer, Technology, Regulation.
+DREAM uses seven lenses: People, Operations, Technology, Commercial, Customer, Risk/Compliance, Partners.
 DREAM journey stages: Awareness, Booking, Pre-Journey, Airport Journey, Boarding, In-Flight Experience, Arrival & Baggage, Post-Journey Support, Loyalty & Future Engagement.
 (These are airline-specific defaults — adapt if the document is from a different sector.)
 

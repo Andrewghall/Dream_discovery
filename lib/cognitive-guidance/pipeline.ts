@@ -140,7 +140,7 @@ const PHASE_ALLOWED_SIGNALS: Record<DialoguePhase, Set<SignalType>> = {
 };
 
 // In REIMAGINE, only these lenses should trigger missing_dimension signals.
-const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Commercial', 'Partners']);
+const REIMAGINE_LENSES: Set<Lens> = new Set(['People', 'Commercial', 'Customer', 'Partners']);
 
 // ── Blueprint-aware helpers ────────────────────────────────
 
@@ -435,7 +435,7 @@ const DEFAULT_DOMAIN_TO_LENS: Record<string, Lens> = {
   Commercial: 'Commercial',
   'Risk/Compliance': 'Risk/Compliance',
   Partners: 'Partners',
-  Customer: 'Commercial',
+  Customer: 'Customer',
   Organisation: 'Operations',
   Regulation: 'Risk/Compliance',
 };
@@ -446,6 +446,7 @@ export const DEFAULT_LENS_TO_DOMAIN: Record<string, string> = {
   Operations: 'Operations',
   Technology: 'Technology',
   Commercial: 'Commercial',
+  Customer: 'Customer',
   'Risk/Compliance': 'Risk/Compliance',
   Partners: 'Partners',
 };
@@ -478,7 +479,8 @@ const LENS_RELEVANCE_THRESHOLD = 0.3;
 
 /** Default keyword patterns per lens --used as fallback when CaptureAPI under-classifies */
 const DEFAULT_KEYWORD_LENS_MAP: [string, RegExp][] = [
-  ['Commercial', /\b(customer\w*|client\w*|consumer\w*|buyer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback|commerci\w*|revenue|pric\w*|profit|margin|growth|market\w*|sales\w*|contract\w*|monetis\w*|competitive|ROI)\b/i],
+  ['Customer', /\b(customer\w*|client\w*|consumer\w*|shopper\w*|subscriber\w*|patient\w*|end.?user\w*|member\w*|user\w*|experience\w*|journey\w*|satisfaction|retention|churn|onboard\w*|loyalt\w*|feedback|trust|service quality|complaint\w*|responsiveness)\b/i],
+  ['Commercial', /\b(buyer\w*|market\w*|sales\w*|commercial\w*|revenue|pric\w*|profit|margin|growth|contract\w*|monetis\w*|competitive|ROI|pipeline|segment\w*|positioning|proposition)\b/i],
   ['Technology', /\b(technolog\w*|AI|machine.?learning|system\w*|platform\w*|software|digital\w*|automat\w*|data\b|cloud|infra\w*|algorithm\w*|API|integrat\w*|cyber\w*|server\w*|database\w*|scal\w*|architect\w*|deploy\w*|devops|pipeline\w*)\b/i],
   ['Risk/Compliance', /\b(regulat\w*|complian\w*|legal\w*|GDPR|FCA|licen[cs]\w*|governance|audit\w*|polic[iy]\w*|legislat\w*|mandate\w*|standard\w*|accredit\w*|certif\w*|oversight|enforce\w*|statute\w*|jurisdict\w*|scrutin\w*|risk\b|control\w*)\b/i],
   ['Operations', /\b(organi[sz]\w*|department\w*|team\w*|structure\w*|process\w*|workflow\w*|operat\w*|management|staff\w*|employ\w*|HR|budget\w*|resource\w*|efficien\w*|productiv\w*|strategy\w*|decision\w*|cost\w*|revenue\w*|resilien\w*|rigid\w*|agil\w*)\b/i],

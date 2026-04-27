@@ -52,11 +52,11 @@ export function synthesiseStream(
           text,
           model_id: ELEVENLABS_MODEL,
           voice_settings: {
-            stability: 0.65,          // higher = calmer, less pitch variation, more measured delivery
+            stability: 0.80,          // higher = calmer, more consistent, less prosodic flourish
             similarity_boost: 0.75,   // close to voice character
-            style: 0.20,              // low style = understated, no excitement or uplift
+            style: 0.05,              // near-zero = no interpretive uplift, no over-excitement
             use_speaker_boost: true,  // keeps presence without adding energy
-            speed: 1.0,               // natural pace — not rushing
+            speed: 0.96,              // very slightly slower for measured, grounded delivery
           },
         }),
       });

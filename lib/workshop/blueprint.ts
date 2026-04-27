@@ -351,9 +351,9 @@ export const DEFAULT_BLUEPRINT: WorkshopBlueprint = {
   // CONSTRAINTS works right-to-left: hard external constraints → soft internal
   // DEFINE_APPROACH works left-to-right: human → structural → technical → commercial
   phaseLensPolicy: {
-    REIMAGINE: ['People', 'Commercial', 'Partners'],
-    CONSTRAINTS: ['Risk/Compliance', 'Partners', 'Technology', 'Operations', 'Commercial', 'People'],
-    DEFINE_APPROACH: ['People', 'Operations', 'Technology', 'Commercial', 'Risk/Compliance', 'Partners'],
+    REIMAGINE: ['People', 'Commercial', 'Customer', 'Partners'],
+    CONSTRAINTS: ['Risk/Compliance', 'Partners', 'Customer', 'Technology', 'Operations', 'Commercial', 'People'],
+    DEFINE_APPROACH: ['People', 'Operations', 'Technology', 'Commercial', 'Customer', 'Risk/Compliance', 'Partners'],
   },
 
   // Journey stages from workshop-dimensions.ts DEFAULT_JOURNEY_STAGES

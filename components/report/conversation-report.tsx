@@ -34,9 +34,10 @@ function phaseLabel(phase: string): string {
       operations: 'D2 — Operations',
       technology: 'D3 — Technology',
       commercial: 'D4 — Commercial',
-      risk_compliance: 'D5 — Risk / Compliance',
-      finance: 'D6 — Finance',
-      partners: 'D7 — Partners',
+      customer: 'D5 — Customer',
+      risk_compliance: 'D6 — Risk / Compliance',
+      finance: 'D7 — Finance',
+      partners: 'D8 — Partners',
     } as const;
     return labels[canonicalPhase];
   }
@@ -49,6 +50,7 @@ function phaseRatingPrompt(phase: string): string {
   if (canonicalPhase === 'operations') return "Rate how well the organisation's operating model, processes, and decision flow help you do your job.";
   if (canonicalPhase === 'technology') return 'Rate the technology, systems, and tools you use in terms of reliability and ease of use.';
   if (canonicalPhase === 'commercial') return 'Rate how well the organisation converts customer need into value, growth, and commercial performance.';
+  if (canonicalPhase === 'customer') return 'Rate how well the organisation understands customer needs, delivers the experience promised, and earns long-term trust.';
   if (canonicalPhase === 'risk_compliance') return 'Rate how well the organisation manages compliance obligations, controls, and material risk.';
   if (canonicalPhase === 'partners') return 'Rate how well external partners and suppliers support delivery and outcomes.';
   return 'Rate this area on a 1–10 scale.';

@@ -90,7 +90,23 @@ export async function POST(
       console.log(`\n📧 Processing participant: ${participant.name} (${participant.email})`);
       console.log(`   - Email sent before: ${participant.emailSentAt ? 'YES' : 'NO'}`);
 
-      const discoveryUrl = `${appUrl}/discovery/${workshopId}/${participant.discoveryToken}`;
+      // EthentaFlow voice agent URL — used when ETHENTAFLOW_URL env is set.
+      // Otherwise fall back to the legacy /discovery route on this app.
+      const ethentaflowBase = process.env.ETHENTAFLOW_URL?.trim();
+      let discoveryUrl: string;
+      if (ethentaflowBase) {
+        const url = new URL(ethentaflowBase);
+        url.searchParams.set('name', participant.name);
+        url.searchParams.set('email', participant.email);
+        if (participant.role) url.searchParams.set('title', participant.role);
+        if (participant.department) url.searchParams.set('department', participant.department);
+        if (workshop.name) url.searchParams.set('company', workshop.name);
+        url.searchParams.set('workshopId', workshopId);
+        url.searchParams.set('participantToken', participant.discoveryToken);
+        discoveryUrl = url.toString();
+      } else {
+        discoveryUrl = `${appUrl}/discovery/${workshopId}/${participant.discoveryToken}`;
+      }
       console.log(`   - Discovery URL: ${discoveryUrl}`);
 
       console.log(`   - Calling Resend API...`);

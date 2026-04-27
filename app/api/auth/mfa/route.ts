@@ -25,7 +25,7 @@ import {
   buildTotpUri,
   requiresMfa,
 } from '@/lib/auth/mfa';
-import { verifyMfaEnrolmentToken } from '@/app/api/auth/login/route';
+import { verifyMfaEnrolmentToken } from '@/lib/auth/mfa-challenge';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
 import { z } from 'zod';
 

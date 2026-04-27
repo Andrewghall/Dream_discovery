@@ -26,13 +26,13 @@ const STAGES = [
     colour: 'from-blue-500 to-cyan-500',
     timeline: '1-2 weeks before',
     paragraphs: [
-      'Every participant  -  from internal teams to partners and ecosystem stakeholders  -  receives a link to a private, AI-guided conversation. In just 15 minutes, the AI explores their perspective across five domains: People, Organisation, Customer, Technology, and Regulation.',
+      'Every participant  -  from internal teams to partners and ecosystem stakeholders  -  receives a link to a private, AI-guided conversation. In just 15 minutes, the AI explores their perspective across seven domains: People, Operations, Technology, Commercial, Customer, Risk / Compliance, and Partners.',
       'This isn\'t a survey. It\'s a genuine dialogue where participants share insights, rate maturity, identify constraints, and describe their vision for the future. The AI adapts its questions based on responses, going deeper where it matters.',
       'By the time the workshop begins, EthentaFlow has already extracted hundreds of insights, detected themes, scored confidence levels, and prepared a Discovery Intelligence briefing for the facilitator. The workshop starts with data, not blank whiteboards.',
     ],
     capabilities: [
       '15-minute structured AI conversations with each participant',
-      'Five organisational domains explored in depth',
+      'Seven organisational domains explored in depth',
       'Maturity ratings: current state, target state, projected trajectory',
       'Confidence scoring  -  certainty vs hedging detected automatically',
       'Automatic insight extraction and theme clustering',

@@ -13,6 +13,7 @@ export const PHASE_ORDER: ConversationPhase[] = [
   'operations',
   'technology',
   'commercial',
+  'customer',
   'risk_compliance',
   'partners',
   'prioritization',
@@ -191,6 +192,36 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
       tag: 'future',
     },
   ],
+  customer: [
+    {
+      text:
+        'When looking specifically at Customer, state where you believe the company are today, where you feel they should be and where the company will be if they do nothing differently.\n\nRate how well the organisation understands customer needs, delivers the experience promised, and earns long-term trust',
+      tag: 'triple_rating',
+      maturityScale: [
+        'Customer needs are poorly understood. Experience is inconsistent. Trust is fragile and easily lost.',
+        'Some customer insight exists, but journeys break down and service quality varies too much.',
+        'The organisation understands core customer needs and usually delivers a dependable experience.',
+        'Customer insight shapes decisions quickly. Journeys improve proactively and trust is strengthened deliberately.',
+        'The organisation is deeply customer-led. Experience, loyalty, and advocacy reinforce each other consistently.',
+      ],
+    },
+    {
+      text: 'Where do customers experience the business at its best today, and what makes that feel different?',
+      tag: 'working',
+    },
+    {
+      text: 'Where does the customer experience break down, create effort, or damage trust most often?',
+      tag: 'pain_points',
+    },
+    {
+      text: 'What do customers need or expect that the organisation still does not understand well enough?',
+      tag: 'gaps',
+    },
+    {
+      text: 'If the customer experience was genuinely stronger in 18 months, what would customers notice first?',
+      tag: 'future',
+    },
+  ],
   risk_compliance: [
     {
       text:
@@ -245,7 +276,7 @@ export const FIXED_QUESTIONS: Record<ConversationPhase, FixedQuestion[]> = {
   ],
   prioritization: [
     {
-      text: 'Of the six areas (People, Operations, Technology, Commercial, Risk / Compliance, Partners), which one gets in the way of your work the most?',
+      text: 'Of the seven areas (People, Operations, Technology, Commercial, Customer, Risk / Compliance, Partners), which one gets in the way of your work the most?',
       tag: 'biggest_constraint',
     },
     {
@@ -378,8 +409,8 @@ const LENS_NAME_TO_PHASE: Record<string, ConversationPhase> = {
   Organisation: 'operations',
   Technology: 'technology',
   Commercial: 'commercial',
-  Customer: 'commercial',
-  'Customer Experience': 'commercial',
+  Customer: 'customer',
+  'Customer Experience': 'customer',
   'Risk/Compliance': 'risk_compliance',
   Regulation: 'risk_compliance',
   Partners: 'partners',

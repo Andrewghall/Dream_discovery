@@ -33,20 +33,9 @@ async function createMfaChallengeToken(userId: string): Promise<string> {
     .sign(secret);
 }
 
-export async function verifyMfaChallengeToken(token: string): Promise<string | null> {
-  try {
-    const secret = new TextEncoder().encode(
-      process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
-    );
-    const { payload } = await jwtVerify(token, secret, {
-      audience: 'mfa-challenge',
-      issuer: 'dream-discovery',
-    });
-    return typeof payload.userId === 'string' ? payload.userId : null;
-  } catch {
-    return null;
-  }
-}
+// verifyMfaChallengeToken moved to lib/auth/mfa-challenge.ts so it can be
+// imported by other routes — Next.js disallows non-HTTP-handler exports
+// from route files (was breaking the Vercel build).
 
 /**
  * Short-lived token (15 min) issued when MFA is required but the user has not
@@ -66,20 +55,7 @@ async function createMfaEnrolmentToken(userId: string): Promise<string> {
     .sign(secret);
 }
 
-export async function verifyMfaEnrolmentToken(token: string): Promise<string | null> {
-  try {
-    const secret = new TextEncoder().encode(
-      process.env.SESSION_SECRET ?? process.env.AUTH_SECRET ?? ''
-    );
-    const { payload } = await jwtVerify(token, secret, {
-      audience: 'mfa-enrolment',
-      issuer: 'dream-discovery',
-    });
-    return typeof payload.userId === 'string' ? payload.userId : null;
-  } catch {
-    return null;
-  }
-}
+// verifyMfaEnrolmentToken moved to lib/auth/mfa-challenge.ts (see above).
 
 function getIpAddress(request: NextRequest): string {
   return (

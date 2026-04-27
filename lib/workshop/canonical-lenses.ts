@@ -3,6 +3,7 @@ export type CanonicalLensName =
   | 'Operations'
   | 'Technology'
   | 'Commercial'
+  | 'Customer'
   | 'Risk/Compliance'
   | 'Partners';
 
@@ -11,6 +12,7 @@ export type CanonicalConversationPhase =
   | 'operations'
   | 'technology'
   | 'commercial'
+  | 'customer'
   | 'risk_compliance'
   | 'partners';
 
@@ -61,14 +63,26 @@ export const CANONICAL_LENSES: readonly CanonicalLensDefinition[] = [
   {
     name: 'Commercial',
     phase: 'commercial',
-    description: 'Demand, proposition, revenue logic, growth, customer value, and market performance',
+    description: 'Demand, proposition, pricing, revenue logic, growth, and market performance',
     keywords: [
-      'commercial', 'customer', 'client', 'consumer', 'buyer', 'market', 'sales',
-      'revenue', 'pricing', 'profit', 'margin', 'growth', 'retention', 'churn',
-      'proposition', 'competitive', 'contract', 'monetis', 'roi', 'nps',
-      'experience', 'journey', 'value',
+      'commercial', 'client', 'consumer', 'buyer', 'market', 'sales', 'revenue',
+      'pricing', 'profit', 'margin', 'growth', 'proposition', 'competitive',
+      'contract', 'monetis', 'roi', 'value', 'pipeline', 'segment', 'positioning',
+      'renewal', 'deal', 'bid',
     ],
     color: '#fef9c3',
+  },
+  {
+    name: 'Customer',
+    phase: 'customer',
+    description: 'Customer understanding, experience, trust, retention, and the lived reality of value delivery',
+    keywords: [
+      'customer', 'customers', 'client', 'clients', 'consumer', 'consumer', 'journey',
+      'experience', 'retention', 'churn', 'trust', 'loyalty', 'feedback', 'voice of customer',
+      'satisfaction', 'complaint', 'service quality', 'adoption', 'advocacy', 'needs',
+      'expectation', 'onboarding', 'responsiveness',
+    ],
+    color: '#fde68a',
   },
   {
     name: 'Risk/Compliance',
@@ -113,10 +127,10 @@ const LEGACY_LENS_ALIASES: Record<string, CanonicalLensName> = {
   technology: 'Technology',
   tech: 'Technology',
   commercial: 'Commercial',
-  customer: 'Commercial',
-  'customer experience': 'Commercial',
-  'customer journey': 'Commercial',
-  'customer impact': 'Commercial',
+  customer: 'Customer',
+  'customer experience': 'Customer',
+  'customer journey': 'Customer',
+  'customer impact': 'Customer',
   'risk/compliance': 'Risk/Compliance',
   'risk / compliance': 'Risk/Compliance',
   risk: 'Risk/Compliance',
@@ -132,6 +146,7 @@ const PHASE_TO_LENS: Record<CanonicalConversationPhase, CanonicalLensName> = {
   operations: 'Operations',
   technology: 'Technology',
   commercial: 'Commercial',
+  customer: 'Customer',
   risk_compliance: 'Risk/Compliance',
   partners: 'Partners',
 };
@@ -143,8 +158,8 @@ const LEGACY_PHASE_ALIASES: Record<string, CanonicalConversationPhase> = {
   organization: 'operations',
   operations: 'operations',
   technology: 'technology',
-  customer: 'commercial',
   commercial: 'commercial',
+  customer: 'customer',
   regulation: 'risk_compliance',
   'risk/compliance': 'risk_compliance',
   'risk / compliance': 'risk_compliance',

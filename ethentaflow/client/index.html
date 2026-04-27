@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DREAMflow</title>
+    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
     <style>
       :root {
         --bg: #0a0e1a;
@@ -18,7 +19,7 @@
       html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         height: 100%; }
-      body { display: grid; grid-template-columns: 1fr 360px; grid-template-rows: auto 1fr auto;
+      body { display: grid; grid-template-columns: 1fr 360px; grid-template-rows: auto 1fr auto auto;
         gap: 1px; background: var(--border); }
       header { grid-column: 1 / 3; padding: 16px 24px; background: var(--panel);
         display: flex; align-items: center; gap: 16px; }
@@ -27,7 +28,60 @@
       header .dot.live { background: #ff4c6b; animation: pulse 1.2s infinite; }
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
       #transcript { padding: 24px; overflow-y: auto; background: var(--bg); }
-      #sidebar { display: flex; flex-direction: column; background: var(--panel); overflow: hidden; }
+      #sidebar { display: flex; flex-direction: column; background: var(--panel); overflow-y: auto; }
+
+      /* Live synthesis panel — populated by the synthesiser agent. */
+      #synthesis { padding: 16px; border-bottom: 1px solid var(--border); }
+      #synthesis:empty { display: none; }
+      .synth-header { font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+        display: flex; align-items: center; justify-content: space-between; }
+      .synth-section { margin-bottom: 18px; }
+      .synth-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+        text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+      .synth-headline { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.92); margin-bottom: 4px; }
+      .synth-summary { font-size: 12px; line-height: 1.5; color: rgba(255,255,255,0.78); margin-bottom: 8px; }
+      .synth-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+      .synth-tag { display: inline-block; font-size: 10px; padding: 3px 8px; border-radius: 12px;
+        background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.78); }
+      .synth-cross { padding: 10px 12px; border-radius: 8px; background: rgba(212,168,76,0.10);
+        border: 1px solid rgba(212,168,76,0.25); margin-bottom: 14px; }
+      .synth-exec { padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border); white-space: pre-wrap; font-size: 12px;
+        line-height: 1.55; color: rgba(255,255,255,0.85); }
+      .synth-download { display: inline-block; margin-top: 14px; padding: 8px 14px; border-radius: 6px;
+        background: var(--accent); color: var(--bg); border: none; font-size: 12px; font-weight: 600;
+        cursor: pointer; }
+      .synth-download:hover { filter: brightness(1.1); }
+      .synth-download:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      /* Tone, input quality, key insights, structured categories, live cloud, feedback */
+      .synth-tone { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+      .synth-tone strong { color: rgba(255,255,255,0.92); text-transform: capitalize; }
+      .synth-iq { padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border); margin-bottom: 14px; }
+      .synth-iq-score { font-size: 13px; color: rgba(255,255,255,0.85); margin: 4px 0 6px; }
+      .synth-iq-score strong { color: var(--accent); }
+      .synth-insights { padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border); margin-bottom: 14px; }
+      .synth-insight { padding: 8px 0; border-top: 1px solid var(--border); }
+      .synth-insight:first-of-type { border-top: none; padding-top: 4px; }
+      .synth-insight-title { font-weight: 700; font-size: 12.5px; color: rgba(255,255,255,0.92); margin-bottom: 2px; }
+      .synth-insight-conf { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+      .synth-insight-conf strong { color: rgba(255,255,255,0.85); text-transform: capitalize; }
+      .synth-quote { border-left: 2px solid var(--accent); padding: 4px 0 4px 9px;
+        margin: 4px 0; font-size: 11.5px; font-style: italic; color: rgba(255,255,255,0.72); }
+      .synth-cat-title { font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+        text-transform: uppercase; color: var(--muted); margin: 8px 0 3px; }
+      .synth-cat-list { margin: 0 0 4px 0; padding-left: 18px; font-size: 11.5px;
+        color: rgba(255,255,255,0.82); line-height: 1.45; }
+      .synth-cat-list li { margin: 2px 0; word-break: break-word; }
+      .synth-cloud-live { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+        background: rgba(255,255,255,0.03); margin-top: 10px; line-height: 2; }
+      .synth-cloud-term { display: inline-block; margin: 0 5px;
+        color: rgba(255,255,255,0.78); vertical-align: middle; }
+      .synth-feedback { padding: 10px 12px; border-radius: 8px; background: rgba(212,168,76,0.08);
+        border: 1px solid rgba(212,168,76,0.2); margin-top: 10px; }
 
       /* Coverage dashboard */
       #coverage { padding: 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -99,13 +153,25 @@
       button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
       #status { color: var(--muted); font-size: 13px; margin-left: auto; }
 
-      /* Scoring card — shown during lens measurement questions */
+      /* Mode toggle (Voice / Written) — segmented control style. */
+      .mode-toggle-wrap { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+      .mode-hint { font-size: 10px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }
+      .mode-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+      .mode-btn { background: transparent; color: var(--muted); border: 0; padding: 8px 14px;
+        font-weight: 500; font-size: 13px; cursor: pointer; border-radius: 0; }
+      .mode-btn:not(.active):not(:disabled):hover { background: rgba(255,255,255,0.04); color: var(--text); }
+      .mode-btn.active { background: var(--accent); color: var(--bg); }
+      .mode-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+
+      /* Scoring card — Dream Discovery look: bright lens-tinted panel,
+         spacious cells, clear maturity descriptions per band. */
       .scoring-card {
-        margin: 20px 0;
-        padding: 20px 20px 16px;
-        border-radius: 10px;
-        background: var(--lens-bg, #1a1f30);
-        border: 1px solid var(--lens-accent, var(--accent));
+        margin: 24px 0;
+        padding: 28px 28px 22px;
+        border-radius: 14px;
+        background: var(--lens-bg, #1a2440);
+        border: 1px solid color-mix(in srgb, var(--lens-accent, var(--accent)) 35%, transparent);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.25), 0 0 0 1px color-mix(in srgb, var(--lens-accent, var(--accent)) 18%, transparent) inset;
         max-width: 100%;
         animation: cardIn 0.25s ease-out;
       }
@@ -114,72 +180,84 @@
         to   { opacity: 1; transform: translateY(0); }
       }
       .scoring-card-label {
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.1em;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--lens-accent, var(--accent));
-        margin-bottom: 16px;
+        margin-bottom: 20px;
       }
-      .scoring-card-cells {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 8px;
-      }
-      .scoring-card-cell {
+      /* Vertical maturity-band rows — Dream Discovery style. */
+      .scoring-card-bands {
         display: flex;
         flex-direction: column;
-        align-items: center;
         gap: 6px;
-        padding: 14px 8px 12px;
-        border-radius: 6px;
-        background: rgba(0,0,0,0.25);
-        border: 1px solid rgba(255,255,255,0.06);
-        transition: background 0.2s, border-color 0.2s;
       }
-      .scoring-card-cell.active {
-        background: var(--lens-accent, var(--accent));
-        border-color: var(--lens-accent, var(--accent));
+      .scoring-card-band {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        color: #1f2433;
+        line-height: 1.4;
+        transition: filter 0.15s, transform 0.15s;
       }
-      .scoring-card-cell.active .scoring-card-num,
-      .scoring-card-cell.active .scoring-card-cell-label {
-        color: #fff;
+      .scoring-card-band:hover {
+        filter: brightness(0.97);
+        transform: translateX(2px);
       }
-      .scoring-card-num {
-        font-size: 28px;
+      .scoring-card-band.active {
+        outline: 3px solid var(--lens-accent, var(--accent));
+        outline-offset: 1px;
+      }
+      .scoring-card-band-num {
+        flex: 0 0 auto;
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.10);
+        color: #1f2433;
         font-weight: 700;
-        line-height: 1;
-        color: var(--lens-accent, var(--accent));
+        font-size: 14px;
       }
-      .scoring-card-cell-label {
-        font-size: 10px;
-        color: var(--muted);
-        text-align: center;
-        letter-spacing: 0.02em;
+      .scoring-card-band-text {
+        font-size: 13px;
+        color: #1f2433;
+      }
+      .scoring-card-band-label {
+        font-weight: 700;
+      }
+      .scoring-card-band-desc {
+        font-weight: 400;
       }
       .scoring-card-prompts {
-        margin-top: 16px;
+        margin-top: 22px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        border-top: 1px solid rgba(255,255,255,0.07);
-        padding-top: 12px;
+        gap: 10px;
+        border-top: 1px solid color-mix(in srgb, var(--lens-accent, var(--accent)) 20%, transparent);
+        padding-top: 18px;
       }
       .scoring-card-prompt-row {
         display: flex;
         align-items: baseline;
-        gap: 10px;
+        gap: 14px;
       }
       .scoring-card-prompt-key {
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 13px;
+        font-weight: 700;
         color: var(--lens-accent, var(--accent));
-        min-width: 72px;
-        letter-spacing: 0.03em;
+        min-width: 88px;
+        letter-spacing: 0.02em;
       }
       .scoring-card-prompt-desc {
-        font-size: 12px;
-        color: var(--muted);
+        font-size: 13px;
+        color: rgba(255,255,255,0.78);
       }
     </style>
   </head>
@@ -193,10 +271,27 @@
     <main id="transcript"></main>
     <aside id="sidebar">
       <div id="coverage"></div>
+      <div id="synthesis"></div>
       <div id="debug"></div>
     </aside>
+    <div id="textInputRow" style="display:none;grid-column:1 / 3;padding:12px 24px;background:var(--panel);border-top:1px solid var(--border);">
+      <div style="display:flex;gap:10px;align-items:flex-end;max-width:100%;">
+        <textarea id="textInput" rows="3" placeholder="Type your answer here. Press Enter to send, Shift+Enter for a new line."
+          style="flex:1;background:#1a2440;color:#fff;border:1px solid #2a3450;border-radius:8px;padding:12px 14px;font-size:14px;font-family:inherit;line-height:1.45;resize:vertical;min-height:64px;"></textarea>
+        <button id="textSendBtn" type="button" style="padding:12px 22px;height:fit-content;">Send</button>
+      </div>
+      <div style="margin-top:6px;font-size:11px;color:var(--muted);">Press Enter to send · Shift+Enter for a new line</div>
+    </div>
     <footer>
+      <div class="mode-toggle-wrap">
+        <div class="mode-hint">⇄  switch anytime</div>
+        <div id="modeToggle" class="mode-toggle">
+          <button type="button" id="modeVoiceBtn" class="mode-btn active">🎙 Voice</button>
+          <button type="button" id="modeTextBtn" class="mode-btn">⌨ Written</button>
+        </div>
+      </div>
       <button id="startBtn">Start Session</button>
+      <button id="pauseBtn" class="secondary" disabled>Pause</button>
       <button id="endBtn" class="secondary" disabled>End Session</button>
       <span id="status">Disconnected</span>
     </footer>

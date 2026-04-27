@@ -141,6 +141,50 @@ function stripCliches(text: string): string {
 }
 
 /**
+ * Force ElevenLabs to spell uppercase acronyms letter-by-letter rather than
+ * pronouncing them as words ("CRO" → "crow", "COO" → "coo", "CMO" → "see-moh").
+ * Inserts periods between letters: "CRO" → "C.R.O." which TTS reads as the
+ * spelled letters.
+ *
+ * Skips: anything that's already mixed case, words with digits adjacent,
+ * single letters, anything 6+ characters (probably not an acronym).
+ */
+const ACRONYM_KEEP_AS_IS = new Set([
+  // Common terms ElevenLabs already handles correctly as a word.
+  'AI', 'OK', 'OKAY', 'TV', 'DVD', 'CD', 'FAQ',
+]);
+
+function spellAcronyms(text: string): string {
+  return text.replace(/\b([A-Z]{2,5})\b/g, (match) => {
+    if (ACRONYM_KEEP_AS_IS.has(match)) return match;
+    return match.split('').join('.') + '.';
+  });
+}
+
+/**
+ * Reverse contractions that read wrong out loud after a wh-word.
+ *   "where you're today"   → "where you are today"
+ *   "what you're seeing"   → "what you are seeing"
+ *   "ready when you're"    → "ready when you are"
+ * The contraction is fine in normal positions ("you're working with..."),
+ * just not after where/what/how/when/who or as the trailing word in "ready when".
+ */
+function fixWhWordContractions(text: string): string {
+  let out = text;
+  // After a wh-word: expand the contraction back.
+  out = out.replace(/\b(where|what|how|when|who|why)\s+(you|we|they)'re\b/gi,
+    (_, w, p) => `${w} ${p} are`);
+  out = out.replace(/\b(where|what|how|when|who|why)\s+(it|that|there)'s\b/gi,
+    (_, w, p) => `${w} ${p} is`);
+  out = out.replace(/\b(where|what|how|when|who|why)\s+(he|she)'s\b/gi,
+    (_, w, p) => `${w} ${p} is`);
+  // Trailing "ready when you're" / "ready when we're" — must stay expanded.
+  out = out.replace(/\bready when (you|we|they)'re\b/gi,
+    (_, p) => `ready when ${p} are`);
+  return out;
+}
+
+/**
  * Apply natural spoken contractions to text before it goes to TTS.
  * Preserves original casing on the first word of each contraction.
  */
@@ -159,7 +203,13 @@ export function relaxText(text: string): string {
       return replacement;
     });
   }
-  // Strip consulting clichés last — after contractions so "let us" → "let's" is already done
+  // Reverse contractions that read wrong after wh-words / "ready when".
+  out = fixWhWordContractions(out);
+  // Strip consulting clichés — after contractions so "let us" → "let's" is already done
   out = stripCliches(out);
+  // Force acronym spelling LAST so the period-separated form is preserved
+  // through to TTS. Must run after contractions/clichés which are case-aware
+  // on lowercase patterns.
+  out = spellAcronyms(out);
   return out;
 }

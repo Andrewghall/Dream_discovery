@@ -77,6 +77,7 @@ function getSectionLabel(
     operations: 'Operations',
     technology: 'Technology',
     commercial: 'Commercial',
+    customer: 'Customer',
     risk_compliance: 'Risk / Compliance',
     partners: 'Partners',
   };

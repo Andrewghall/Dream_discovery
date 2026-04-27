@@ -233,7 +233,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
 Your task is to:
 1. Analyze all workshop data points and their agentic analyses
-2. Organize them into the canonical domains: People, Operations, Technology, Commercial, Risk/Compliance, Partners
+2. Organize them into the canonical domains: People, Operations, Technology, Commercial, Customer, Risk/Compliance, Partners
 3. Categorize each item as: aspiration, constraint, enabler, opportunity, or risk
 4. Order items within each domain by logical flow and importance
 5. Ensure coherent narrative progression within each domain

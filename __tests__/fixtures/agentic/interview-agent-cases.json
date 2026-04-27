@@ -1,0 +1,62 @@
+[
+  {
+    "id": "cco-commercial-voice",
+    "role": "Chief Commercial Officer",
+    "department": "Revenue",
+    "phase": "commercial",
+    "mode": "VOICE",
+    "probe": "What are the two or three biggest reasons that the organisation struggles to turn demand into value consistently, and where does that show up most clearly in your day-to-day work with buyers, pipeline quality, and how the proposition lands in the market?",
+    "expectedGuidancePhrases": ["ICP fit", "pipeline quality", "growth"],
+    "maxPromptLength": 160
+  },
+  {
+    "id": "coo-commercial-text",
+    "role": "Chief Operating Officer",
+    "department": "Operations",
+    "phase": "commercial",
+    "mode": "TEXT",
+    "probe": "Where do operations, delivery, service quality, or internal handoffs most obviously help or constrain the commercial promises the business makes to customers today?",
+    "expectedGuidancePhrases": ["support or constrain sales", "promises made to customers", "delivery"],
+    "maxPromptLength": 220
+  },
+  {
+    "id": "cpo-commercial-voice",
+    "role": "Chief Product Officer",
+    "department": "Product",
+    "phase": "commercial",
+    "mode": "VOICE",
+    "probe": "How do roadmap choices, product design, and technical capability shape market fit and the business's ability to deliver what it promises?",
+    "expectedGuidancePhrases": ["roadmap choices", "market fit", "north-star"],
+    "maxPromptLength": 160
+  },
+  {
+    "id": "corp-dev-commercial-text",
+    "role": "VP Corporate Development",
+    "department": "Strategy",
+    "phase": "commercial",
+    "mode": "TEXT",
+    "probe": "How do market choices, strategic bets, and portfolio focus connect to ICP definition, value proposition, and the growth logic behind this business?",
+    "expectedGuidancePhrases": ["market choices", "growth logic", "strategic bets"],
+    "maxPromptLength": 220
+  },
+  {
+    "id": "head-of-talent-people-text",
+    "role": "Head of Talent",
+    "department": "People",
+    "phase": "people",
+    "mode": "TEXT",
+    "probe": "Where do capability, incentives, leadership behaviour, or ways of working most clearly help or hinder the organisation's ability to execute its strategy?",
+    "expectedGuidancePhrases": ["capability", "leadership behaviour", "learn and adapt"],
+    "maxPromptLength": 220
+  },
+  {
+    "id": "customer-experience-operations-voice",
+    "role": "Director of Customer Experience",
+    "department": "Customer Experience",
+    "phase": "operations",
+    "mode": "VOICE",
+    "probe": "How does the operating model show up for customers when onboarding, service responsiveness, or trust starts to wobble?",
+    "expectedGuidancePhrases": ["customer experience", "onboarding", "trust"],
+    "maxPromptLength": 160
+  }
+]

@@ -42,6 +42,7 @@ export function ProgressIndicator({
     { phase: 'operations', name: 'Operations', icon: '⚙️' },
     { phase: 'technology', name: 'Technology', icon: '💻' },
     { phase: 'commercial', name: 'Commercial', icon: '📈' },
+    { phase: 'customer', name: 'Customer', icon: '❤️' },
     { phase: 'risk_compliance', name: 'Risk / Compliance', icon: '⚖️' },
     { phase: 'partners', name: 'Partners', icon: '🤝' },
   ];

@@ -24,12 +24,12 @@ const PHASES = [
     tagline: 'AI-Powered Discovery',
     paragraphs: [
       'Before the workshop begins, every participant engages in a structured 15-minute conversation with a dedicated Discovery Agent. This isn\'t a survey or a questionnaire  -  it\'s a genuine dialogue where a specialist AI agent adapts its questions in real-time, exploring what each person really thinks about the organisation\'s current state and future potential.',
-      'The conversation covers five organisational domains: People, Organisation, Customer, Technology, and Regulation. For each domain, participants provide maturity ratings  -  current state, target state, and projected trajectory  -  along with free-form insights, constraints, and visions.',
+      'The conversation covers seven organisational domains: People, Operations, Technology, Commercial, Customer, Risk / Compliance, and Partners. For each domain, participants provide maturity ratings  -  current state, target state, and projected trajectory  -  along with free-form insights, constraints, and visions.',
       'Every response is scored for confidence. The AI detects certainty vs hedging automatically, building a map of where the organisation is confident and where it is guessing. Insights are extracted, themes detected, and constraints identified  -  all before anyone enters the workshop room.',
     ],
     bullets: [
       'Structured 15-minute AI-guided conversations with each participant',
-      'Five organisational domains: People, Organisation, Customer, Technology, Regulation',
+      'Seven organisational domains: People, Operations, Technology, Commercial, Customer, Risk / Compliance, Partners',
       'Individual maturity ratings: current, target, projected',
       'Automatic insight extraction, theme clustering, and constraint identification',
       'Confidence scoring on every response',

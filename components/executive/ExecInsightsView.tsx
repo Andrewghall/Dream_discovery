@@ -7,6 +7,7 @@ const LENS_COLOR: Record<string, string> = {
   Operations:   '#22c55e',
   Technology:   '#f97316',
   Commercial:   '#f2c65c',
+  Customer:     '#f59e0b',
   'Risk/Compliance': '#ef4444',
   Finance:      '#8b5cf6',
   Partners:     '#6366f1',

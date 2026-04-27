@@ -71,8 +71,9 @@ function phaseLabel(phase: string): string {
       operations: 'D2 — Operations',
       technology: 'D3 — Technology',
       commercial: 'D4 — Commercial',
-      risk_compliance: 'D5 — Risk / Compliance',
-      partners: 'D6 — Partners',
+      customer: 'D5 — Customer',
+      risk_compliance: 'D6 — Risk / Compliance',
+      partners: 'D7 — Partners',
     } as const;
     return labels[canonicalPhase];
   }

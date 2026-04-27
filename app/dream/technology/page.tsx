@@ -22,10 +22,10 @@ const CAPABILITIES = [
     iconBg: 'bg-emerald-100 text-emerald-700',
     title: 'Capture Everything',
     description:
-      'Every insight, constraint, and vision is captured through AI-guided conversations across five organisational domains. No signal is lost.',
+      'Every insight, constraint, and vision is captured through AI-guided conversations across seven organisational domains. No signal is lost.',
     details: [
       'Structured 15-minute AI conversations with each participant',
-      'Five organisational domains: People, Organisation, Customer, Technology, Regulation',
+      'Seven organisational domains: People, Operations, Technology, Commercial, Customer, Risk / Compliance, Partners',
       'Individual maturity ratings: current state, target state, projected trajectory',
       'Confidence scoring on every response  -  certainty vs hedging detected automatically',
       'Automatic insight extraction, theme detection, and constraint identification',

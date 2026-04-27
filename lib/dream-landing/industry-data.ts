@@ -101,7 +101,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         phase: 'Discover',
         description:
-          'Captures perspectives from clinicians, administrators, patients (via proxies), technology teams, and compliance officers. All five organisational domains explored across every layer.',
+          'Captures perspectives from clinicians, administrators, patients (via proxies), technology teams, and compliance officers. All seven organisational domains are explored across every layer.',
       },
       {
         phase: 'Reimagine',
@@ -329,7 +329,7 @@ export const INDUSTRIES: Record<string, IndustryData> = {
       {
         phase: 'Discover',
         description:
-          'Replace weeks of stakeholder interviews with structured 15-minute AI conversations. Capture every perspective across five organisational domains with maturity ratings and confidence scoring.',
+          'Replace weeks of stakeholder interviews with structured 15-minute AI conversations. Capture every perspective across seven organisational domains with maturity ratings and confidence scoring.',
       },
       {
         phase: 'Reimagine',

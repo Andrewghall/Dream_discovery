@@ -201,11 +201,26 @@ export const ONBOARDING_WELCOME = buildWelcome();
 // Hardcoded opening and reorient probes — fast, no LLM needed
 const OPENING_PROBE = ONBOARDING_WELCOME;
 
+// Lens-aware reorient. {lens} is substituted by getReorientProbe(confusionCount, lensLabel).
 const REORIENT_PROBES = [
-  "Let me give you a bit of context. I'm here to understand the commercial side of your business and explore where the real challenges are. Think of it as a structured thinking session. What's one thing that isn't working the way it should be?",
+  "Let me give you a bit of context. I'm here to understand the {lens} side of your business and explore where the real challenges are. Think of it as a structured thinking session. What's one thing that isn't working the way it should be?",
   "Let me step back. I'm here to help you think through your business challenges and figure out where the real leverage is. Don't overthink it. What's keeping you up at night right now?",
   "Let's slow down. This session is about understanding what's actually hard in your business and figuring out what's worth digging into. What would be most useful to explore today?",
 ];
+
+const LENS_LABELS: Record<string, string> = {
+  people: 'people and capability',
+  operations: 'operations and delivery',
+  technology: 'technology and credibility',
+  commercial: 'commercial and customer',
+  customer: 'customer relationships',
+  partners: 'partner relationships',
+  regulation: 'regulation and risk',
+};
+
+function lensLabel(lens: string | undefined): string {
+  return (lens && LENS_LABELS[lens]) || 'business';
+}
 
 const ENCOURAGE_PROBES = [
   "There's no wrong answer here. Even if things feel fine, there's usually one area that could be sharper. What comes to mind?",
@@ -223,9 +238,10 @@ export class ProbeEngine {
   /** Get the hardcoded opening probe text (no LLM needed). */
   getOpeningProbe(): string { return OPENING_PROBE; }
 
-  /** Get a reorient probe for the given confusion count (0-indexed). */
-  getReorientProbe(confusionCount: number): string {
-    return REORIENT_PROBES[Math.min(confusionCount, REORIENT_PROBES.length - 1)];
+  /** Get a reorient probe for the given confusion count (0-indexed), substituting {lens} with the current lens label. */
+  getReorientProbe(confusionCount: number, currentLens?: string): string {
+    const template = REORIENT_PROBES[Math.min(confusionCount, REORIENT_PROBES.length - 1)]!;
+    return template.replace('{lens}', lensLabel(currentLens));
   }
 
   /** Get an encourage probe for stubborn silence/short responses. */

@@ -11,7 +11,7 @@ const STEPS = [
     subtitle: 'AI-Powered Discovery',
     points: [
       'A dedicated Discovery Agent conducts 15-minute conversations with each participant',
-      'Structured extraction across People, Organisation, Customer, Technology, Regulation',
+      'Structured extraction across People, Operations, Technology, Commercial, Customer, Risk / Compliance, and Partners',
       'Individual maturity ratings and confidence scoring',
       'Automatic insight extraction and theme detection',
     ],

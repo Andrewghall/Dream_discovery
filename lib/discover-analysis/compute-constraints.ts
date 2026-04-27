@@ -162,7 +162,7 @@ function categoryToDomain(category: string | null): string {
     BUSINESS: 'Operations',
     TECHNOLOGY: 'Technology',
     PEOPLE: 'People',
-    CUSTOMER: 'Commercial',
+    CUSTOMER: 'Customer',
     REGULATION: 'Risk/Compliance',
   };
   return map[category] || category;

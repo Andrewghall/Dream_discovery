@@ -14,6 +14,7 @@
 export type GtmLens =
   | 'People'
   | 'Commercial'
+  | 'Customer'
   | 'Operations'
   | 'Technology'
   | 'Partners'

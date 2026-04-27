@@ -261,7 +261,7 @@ describe('buildQuestionsFromBlueprint', () => {
     expect(firstPrioritization.text).not.toContain('five areas');
     expect(firstPrioritization.text).not.toContain('Processes');
 
-    // CC blueprint (contact_centre pack) has People, Organisation, Customer, Technology, Regulation
+    // Contact-centre blueprint uses its own pack-specific lens set, including Organisation and Customer.
     expect(firstPrioritization.text).toContain('People');
     expect(firstPrioritization.text).toContain('Customer');
     expect(firstPrioritization.text).toContain('Organisation');

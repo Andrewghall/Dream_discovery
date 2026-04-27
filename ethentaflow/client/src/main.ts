@@ -5,12 +5,21 @@ import { WSClient } from './ws.js';
 import { AudioPlayback } from './audio-playback.js';
 import { UI } from './ui.js';
 
-// Build WebSocket URL — include workshop_id if present so the server can
-// auto-fetch prep questions from the DREAM API.
+// Build WebSocket URL.
+//
+// Resolution order:
+//   1. VITE_WS_URL env var (set at build time) — full URL incl. wss://...
+//   2. ?ws=<url> URL param (handy for testing against alt servers)
+//   3. Same-origin host on port 3001 (local dev default)
 function buildWsUrl(): string {
-  const base = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':3001/ws';
+  const envUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
+  const overrideUrl = new URLSearchParams(location.search).get('ws') ?? undefined;
+  const base =
+    (overrideUrl && overrideUrl.trim()) ||
+    (envUrl && envUrl.trim()) ||
+    ((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':3001/ws');
   const workshopId = new URLSearchParams(location.search).get('workshop_id');
-  return workshopId ? `${base}?workshop_id=${encodeURIComponent(workshopId)}` : base;
+  return workshopId ? `${base}${base.includes('?') ? '&' : '?'}workshop_id=${encodeURIComponent(workshopId)}` : base;
 }
 const WS_URL = buildWsUrl();
 
@@ -79,17 +88,90 @@ function setTtsActive(active: boolean): void {
 }
 
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
+const pauseBtn = document.getElementById('pauseBtn') as HTMLButtonElement;
 const endBtn = document.getElementById('endBtn') as HTMLButtonElement;
+const textInput = document.getElementById('textInput') as HTMLTextAreaElement;
+const textSendBtn = document.getElementById('textSendBtn') as HTMLButtonElement;
+const textInputRow = document.getElementById('textInputRow') as HTMLDivElement;
+const modeVoiceBtn = document.getElementById('modeVoiceBtn') as HTMLButtonElement;
+const modeTextBtn = document.getElementById('modeTextBtn') as HTMLButtonElement;
+
+let isPaused = false;
+let sessionMode: 'voice' | 'text' = (new URLSearchParams(location.search).get('mode') === 'text') ? 'text' : 'voice';
+let sessionActive = false;
+
+function applyModeUI(): void {
+  modeVoiceBtn.classList.toggle('active', sessionMode === 'voice');
+  modeTextBtn.classList.toggle('active', sessionMode === 'text');
+  // Show/hide the typing input row. Visible only in text mode AND while session is active.
+  const visible = sessionMode === 'text' && sessionActive;
+  textInputRow.style.display = visible ? 'block' : 'none';
+}
+applyModeUI();
+
+function sendTypedAnswer(): void {
+  const text = textInput.value.trim();
+  if (!text || !ws) return;
+  ws.sendUserText(text);
+  ui.appendFinalUser(text);
+  textInput.value = '';
+  textInput.focus();
+}
+textSendBtn.addEventListener('click', sendTypedAnswer);
+
+modeVoiceBtn.addEventListener('click', () => {
+  if (sessionMode === 'voice') return;
+  sessionMode = 'voice';
+  applyModeUI();
+  // If a session is active, tell the server to switch on the fly.
+  if (sessionActive && ws) ws.sendSwitchMode('voice');
+});
+modeTextBtn.addEventListener('click', () => {
+  if (sessionMode === 'text') return;
+  sessionMode = 'text';
+  applyModeUI();
+  if (sessionActive && ws) {
+    ws.sendSwitchMode('text');
+    textInput.focus();
+  }
+});
+
+textInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  // Shift+Enter adds a newline; Enter alone sends.
+  if (e.shiftKey) return;
+  e.preventDefault();
+  sendTypedAnswer();
+});
 
 startBtn.addEventListener('click', async () => {
   startBtn.disabled = true;
   try {
     await startSession();
+    sessionActive = true;
+    pauseBtn.disabled = false;
+    pauseBtn.textContent = 'Pause';
+    isPaused = false;
     endBtn.disabled = false;
+    applyModeUI();
+    if (sessionMode === 'text') textInput.focus();
   } catch (err) {
     console.error(err);
     ui.setStatus('Failed to start: ' + (err as Error).message);
     startBtn.disabled = false;
+  }
+});
+
+pauseBtn.addEventListener('click', () => {
+  if (!ws) return;
+  if (isPaused) {
+    ws.sendResume();
+    pauseBtn.textContent = 'Pause';
+    isPaused = false;
+  } else {
+    ws.sendPause();
+    pauseBtn.textContent = 'Resume';
+    isPaused = true;
   }
 });
 
@@ -117,23 +199,27 @@ async function startSession(): Promise<void> {
         ui.appendFinalUser(msg.text);
         break;
       case 'probe':
-        // A new probe means the scoring phase for this turn is done — dismiss the card
-        // ONLY if this is NOT a measure strategy (the card should stay up during measurement)
-        if (msg.strategy !== 'measure') {
-          ui.hideScoringCard();
-          ui.appendSystemProbe(msg.text, msg.strategy);
-        }
+        // First sentence of an agent turn — creates a new chat bubble.
+        ui.appendSystemProbe(msg.text, msg.strategy);
+        break;
+      case 'probe_append':
+        // Subsequent streamed sentences from the same turn — append to
+        // the most recent AI bubble so the turn renders as ONE bubble that
+        // grows, not as N separate bubbles.
+        ui.appendToLastSystemProbe(msg.text);
         break;
       case 'measure_prompt':
-        // Show the coloured scoring card for this lens
-        ui.showScoringCard(msg.lens, msg.question);
+        // Show the coloured scoring card for this lens, with the canonical
+        // Dream Discovery 5-band maturity scale (per lens) if provided.
+        ui.showScoringCard(msg.lens, msg.question, msg.maturityScale ?? null);
         break;
       case 'lens_rating':
-        // Highlight the captured score on the card, then fade the card after a moment
+        // Highlight the captured score on the card. Do NOT auto-hide — the
+        // card must stay visible while the agent explores follow-ups for this
+        // lens, so the participant can refer to the maturity bands. The card
+        // is replaced when the next lens's measure_prompt arrives, or hidden
+        // on session_complete.
         ui.highlightScore(msg.current);
-        setTimeout(() => {
-          ui.hideScoringCard();
-        }, 1800);
         break;
       case 'state_update':
         ui.updateDebug(msg.state);
@@ -150,10 +236,12 @@ async function startSession(): Promise<void> {
       case 'session_paused':
         ui.setStatus('Session paused');
         ui.setLive(false);
+        ui.setPaused(true);
         break;
       case 'session_resumed':
         ui.setStatus('Session resumed — speak naturally');
         ui.setLive(true);
+        ui.setPaused(false);
         break;
       case 'coverage_update':
         ui.updateCoverage(msg);
@@ -161,8 +249,16 @@ async function startSession(): Promise<void> {
       case 'interview_progress':
         ui.updateInterviewProgress(msg);
         break;
+      case 'synthesis_update':
+        ui.updateSynthesis(msg.synthesis, ws);
+        break;
+      case 'email_sent':
+        ui.notifyEmailSent((msg as any).to);
+        break;
       case 'session_complete':
         ui.setStatus('Session complete');
+        ui.hideScoringCard();
+        ui.markSessionComplete();
         break;
       case 'error':
         ui.setStatus('Error: ' + msg.message);
@@ -179,6 +275,11 @@ async function startSession(): Promise<void> {
     ui.setStatus('Disconnected');
     ui.stopSessionTimer();
     endBtn.disabled = true;
+    pauseBtn.disabled = true;
+    pauseBtn.textContent = 'Pause';
+    isPaused = false;
+    sessionActive = false;
+    applyModeUI();
     startBtn.disabled = false;
     ttsActive = false;
     ttsStreamDone = false;
@@ -213,16 +314,23 @@ async function startSession(): Promise<void> {
     }
   });
 
-  // Read participant data from URL params — set by the Discovery setup page
-  // e.g. http://localhost:5173/?name=Andrew+Hall&title=Chief+Operating+Officer&resume=<sessionId>
+  // Read participant data from URL params — set by the Discovery setup page.
+  // e.g. http://localhost:5173/?name=Andrew+Hall&title=COO&company=Capita&email=a@b.co&mode=text
   const urlParams = new URLSearchParams(location.search);
   const participantName = urlParams.get('name') ?? undefined;
   const participantTitle = urlParams.get('title') ?? undefined;
+  const participantCompany = urlParams.get('company') ?? undefined;
+  const participantEmail = urlParams.get('email') ?? undefined;
   const resumeSessionId = urlParams.get('resume') ?? undefined;
-  // Optional lens override: ?lenses=people,operations,technology,risk_compliance
+  const workshopId = urlParams.get('workshopId') ?? undefined;
+  const participantToken = urlParams.get('participantToken') ?? undefined;
   const lensesParam = urlParams.get('lenses');
   const lenses = lensesParam ? lensesParam.split(',').map(l => l.trim()).filter(Boolean) : undefined;
-  ws.sendStart(participantName, participantTitle, resumeSessionId, lenses);
+  ws.sendStart(participantName, participantTitle, resumeSessionId, lenses, undefined, {
+    participantCompany, participantEmail, workshopId, participantToken, mode: sessionMode,
+  });
+  // In text mode, also share the email with the UI so the email button knows where to send.
+  ui.setParticipantEmail(participantEmail);
 }
 
 function stopSession(): void {
@@ -240,5 +348,8 @@ function stopSession(): void {
   ui.stopSessionTimer();
   ui.setStatus('Disconnected');
   endBtn.disabled = true;
+  pauseBtn.disabled = true;
+  pauseBtn.textContent = 'Pause';
+  isPaused = false;
   startBtn.disabled = false;
 }

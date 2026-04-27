@@ -535,7 +535,21 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
   }
 
   function extractRatingDigits(text: string): number[] {
-    return [...normaliseSpokenRatingDigits(text).matchAll(/\b([1-5])\b/g)].map(match => parseInt(match[1]!, 10));
+    const normalised = normaliseSpokenRatingDigits(text);
+    const result: number[] = [];
+    // Pass 1: single-digit 1–5 with word boundaries ("3", "five" → 5).
+    for (const m of normalised.matchAll(/\b([1-5])\b/g)) {
+      result.push(parseInt(m[1]!, 10));
+    }
+    if (result.length >= 3) return result;
+    // Pass 2: fused multi-digit tokens like "352" — Deepgram emits them when
+    // the speaker says "three five two" quickly. Split into individual digits
+    // if and only if every digit is in 1–5 and the run is 2–5 chars long.
+    for (const m of normalised.matchAll(/\b([1-5]{2,5})\b/g)) {
+      const digits = m[1]!.split('').map(d => parseInt(d, 10));
+      result.push(...digits);
+    }
+    return result;
   }
 
   function armSilenceWatchdog(): void {
@@ -668,6 +682,10 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
     endpointHandling = false;
     settleAbortedFlag = true;
     settleActive = false;
+    // Cancel any pending settle retry — liveness recovery is now driving the probe,
+    // and we must not let a parked settle probe fire on top of it.
+    if (settleRetryTimer) { clearTimeout(settleRetryTimer); settleRetryTimer = null; }
+    pendingSettleProbe = null;
     detector.discard();
 
     // Recovery cascade:
@@ -1533,9 +1551,9 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
         capture.writeTurn(confTurn);
 
         const reorientText = confCount <= 1
-          ? probeEngine.getReorientProbe(0)
+          ? probeEngine.getReorientProbe(0, agenticCurrentPhase)
           : confCount <= 3
-          ? probeEngine.getReorientProbe(confCount - 1)
+          ? probeEngine.getReorientProbe(confCount - 1, agenticCurrentPhase)
           : probeEngine.getEncourageProbe(confCount - 4);
 
         console.log(`[reorient] confusion=${confCount}`);

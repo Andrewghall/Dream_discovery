@@ -25,7 +25,7 @@ import { nanoid } from 'nanoid';
 import { createSessionToken, type SessionPayload } from '@/lib/auth/session';
 import { logAuditEvent } from '@/lib/audit/audit-logger';
 import { decryptTotpSecret, verifyTotp } from '@/lib/auth/mfa';
-import { verifyMfaChallengeToken } from '@/app/api/auth/login/route';
+import { verifyMfaChallengeToken } from '@/lib/auth/mfa-challenge';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';

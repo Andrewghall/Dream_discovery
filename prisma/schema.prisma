@@ -826,7 +826,7 @@ model Finding {
   workshopId          String
   captureSessionId    String?
   sourceStream        SourceStream
-  lens                String       // People, Organisation, Customer, Technology, Regulation
+  lens                String       // Canonical or domain-pack lens label captured for the finding
   type                FindingType
   title               String
   description         String

@@ -7,7 +7,7 @@ const PHASES = [
     letter: 'D',
     name: 'Discover',
     gradient: 'from-blue-500 to-cyan-500',
-    description: 'AI-facilitated conversations with each participant across five organisational domains.',
+    description: 'AI-facilitated conversations with each participant across seven organisational domains.',
     bullets: [
       'Structured 15-minute discovery interviews',
       'Maturity ratings & confidence scoring',

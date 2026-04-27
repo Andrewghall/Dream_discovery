@@ -9,7 +9,7 @@ const CAPABILITIES = [
     iconBg: 'bg-emerald-100 text-emerald-700',
     title: 'Capture Everything',
     description:
-      'Every insight, constraint, and vision is captured through AI-guided conversations across five organisational domains. No signal is lost.',
+      'Every insight, constraint, and vision is captured through AI-guided conversations across seven organisational domains. No signal is lost.',
   },
   {
     icon: Sparkles,

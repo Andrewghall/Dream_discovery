@@ -58,8 +58,8 @@ const _BASE_CONFIG = {
   sample_rate: 16000,
   channels: 1,
   interim_results: true,
-  endpointing: 700,          // ms of silence before Deepgram segments — balanced for natural pace
-  utterance_end_ms: 1200,    // UtteranceEnd fires after 1.2s silence — fast enough to feel responsive
+  endpointing: 700,          // ms of silence before Deepgram segments — short enough to feel responsive
+  utterance_end_ms: 1600,    // UtteranceEnd fires after 1.6s silence — fast for short answers, agent will still wait if user resumes (Deepgram resets)
   vad_events: true,
   diarize: true,             // label audio by speaker — lets us filter out background voices
 } as const;

@@ -50,7 +50,7 @@ const JOURNEY: Record<string, Record<string, JourneyCell>> = {
   },
   'Operations Lead': {
     Discovery: {
-      action: 'Rates maturity across five domains confidentially',
+      action: 'Rates maturity across seven domains confidentially',
       sentiment: 'neutral',
       agency: 'human',
     },

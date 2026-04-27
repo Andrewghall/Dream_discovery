@@ -72,11 +72,11 @@ export function getPhaseLensOrder(
 }
 
 const PHASE_GUIDANCE: Record<WorkshopPhase, string> = {
-  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no funding concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Commercial, and Partners lenses only. The goal is to get genuine, unconstrained thinking about what "great" looks like while staying grounded in real work and customer reality.`,
+  REIMAGINE: `REIMAGINE is the visionary phase. Participants paint a picture of the ideal future state WITHOUT constraints. No technology limitations, no funding concerns, no regulation barriers - just pure aspiration. The facilitator guides them through People, Commercial, Customer, and Partners lenses. The goal is to get genuine, unconstrained thinking about what "great" looks like while staying grounded in real work and customer reality.`,
 
-  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Risk/Compliance → Commercial → Technology → Operations → People → Partners. Start with hard external constraints (regulatory, compliance) and work inward to softer operating and people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
+  CONSTRAINTS: `CONSTRAINTS maps the real-world limitations, working RIGHT-TO-LEFT through the lenses: Risk/Compliance → Partners → Customer → Technology → Operations → Commercial → People. Start with hard external constraints (regulatory, compliance) and work inward to softer operating and people constraints. The goal is to systematically identify what stands between today and the reimagined vision. This phase references the vision from REIMAGINE to assess each constraint's impact.`,
 
-  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Operations → Technology → Commercial → Risk/Compliance → Partners. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on practical changes, sequence, proof points, and what would need to happen in real work for the approach to succeed.`,
+  DEFINE_APPROACH: `DEFINE APPROACH builds the practical solution LEFT-TO-RIGHT: People → Operations → Technology → Commercial → Customer → Risk/Compliance → Partners. Start with human needs and build outward. The facilitator guides participants to design an approach that bridges today's reality to the reimagined future while respecting the constraints identified. Focus on practical changes, sequence, proof points, and what would need to happen in real work for the approach to succeed.`,
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1026,19 +1026,19 @@ generic People/Organisation/Customer/Technology/Regulation names.
 ` : `THE THREE WORKSHOP PHASES:
 
 1. REIMAGINE (Pure Vision)
-   Lenses: People, Commercial, Partners ONLY
+   Lenses: People, Commercial, Customer, Partners
    Goal: Get participants to paint the ideal future WITHOUT any constraints.
    No technology, no funding, no regulation - just what "amazing" looks like.
    Key: Open, aspirational, creative questions grounded in lived work and customer reality.
 
 2. CONSTRAINTS (Map Limitations - Right-to-Left)
-   Lenses: Risk/Compliance, Commercial, Technology, Operations, People, Partners
+   Lenses: Risk/Compliance, Partners, Customer, Technology, Operations, Commercial, People
    Goal: Systematically identify what stands between today and the reimagined vision.
    Start with hard external constraints and work inward.
    Key: Specific, probing, referencing the vision they just created.
 
 3. DEFINE_APPROACH (Build Solution - Left-to-Right)
-   Lenses: People, Operations, Technology, Commercial, Risk/Compliance, Partners
+   Lenses: People, Operations, Technology, Commercial, Customer, Risk/Compliance, Partners
    Goal: Design the practical path forward that bridges reality to vision.
    Key: Actionable, sequence-focused, measurable. Ask what would need to happen in practice, where the first move is, and how the room would know it is working.
 `}${research?.journeyStages?.length ? `\nCUSTOMER JOURNEY STAGES:\n${research.journeyStages.map((s, i) => `  ${i + 1}. ${s.name}: ${s.description}`).join('\n')}\nReference these journey stages when grounding your questions.\n` : ''}${constraintsBlock}
@@ -1093,9 +1093,12 @@ REIMAGINE LENS DIFFERENTIATION — each lens covers a completely separate territ
   Commercial lens: Buyer value, deal economics, what customers pay for and how they justify it.
                    What the proposition means in a real commercial relationship. What a buyer
                    would doubt or find hard to defend internally. NOT about Capita's people.
+  Customer lens:   Lived customer experience, trust, onboarding, service reality, retention,
+                   and whether the promise feels true after the sale. NOT about pricing,
+                   proposition economics, or internal people dynamics.
   Partners lens:   Ecosystem dependencies, third-party relationships, who else makes this work.
                    What Capita can't deliver alone. What partners would need to do or believe.
-                   NOT about buyers or Capita's own people.
+                   NOT about buyers, lived customer experience, or Capita's own people.
 
 Before generating each REIMAGINE lens, write: "The [X] lens asks about [specific territory].
 The People lens already covered [Y]. The Commercial lens already covered [Z]." Then write
@@ -1328,7 +1331,8 @@ LENS-SPECIFIC RULES:
 - Operations: ask about flow, bottlenecks, delays, queueing, handoffs, and where work breaks down.
 - People: ask about clarity, workload, capability, behaviour, and how work feels in practice.
 - Technology: ask about tools, usability, friction, data gaps, and failure points.
-- Commercial: treat this as customer experience and customer pain. Ask what customers experience or what teams see customers struggling with.
+- Commercial: ask about buyer value, proposition clarity, pricing, growth logic, and what the market is actually buying.
+- Customer: ask about lived customer experience, trust, service pain, unmet need, and where expectations break down after the promise is made.
 - Partners: ask about external dependencies, outsourced delivery, cross-team handoffs, and accountability gaps.
 - Risk/Compliance: ask about rules, approvals, controls, and where they help or slow the work down.
 

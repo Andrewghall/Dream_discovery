@@ -1,6 +1,6 @@
 export type DimensionKey = string;
 
-export type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6';
+export type Focus = 'MASTER' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D7';
 
 export type DimensionMedians = {
   key: DimensionKey;
@@ -221,8 +221,9 @@ function primaryDimensionForFocus(focus: Focus): string {
   if (focus === 'D2') return 'Operations';
   if (focus === 'D3') return 'Technology';
   if (focus === 'D4') return 'Commercial';
-  if (focus === 'D5') return 'Risk/Compliance';
-  if (focus === 'D6') return 'Partners';
+  if (focus === 'D5') return 'Customer';
+  if (focus === 'D6') return 'Risk/Compliance';
+  if (focus === 'D7') return 'Partners';
   return 'Commercial';
 }
 

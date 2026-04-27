@@ -105,6 +105,13 @@ export const PHASE_CONFIGS: Record<ConversationPhase, PhaseConfig> = {
     minimumInsights: 3,
     estimatedDuration: '3 min',
   },
+  customer: {
+    name: 'customer',
+    displayName: 'Customer',
+    objective: 'Explore customer needs, lived experience, trust, retention, and where expectations break down',
+    minimumInsights: 3,
+    estimatedDuration: '3 min',
+  },
   risk_compliance: {
     name: 'risk_compliance',
     displayName: 'Risk / Compliance',
