@@ -64,6 +64,11 @@ export type AgenticTurnParams = {
   participantDepartment?: string | null;
   includeRegulation: boolean;
   preferredInteractionMode: PreferredInteractionMode;
+  /**
+   * Per-session question overrides from DREAM prep.
+   * When provided, these replace PHASE_QUESTIONS for each lens.
+   */
+  sessionQuestions?: Partial<Record<string, FixedQuestion[]>>;
 };
 
 export type AgenticTurnResult = {
@@ -1246,7 +1251,13 @@ function buildClarificationFallback(lastProbeText: string, _phase: string): stri
 // ── Main turn generator ──────────────────────────────────────────────────────
 
 export async function generateAgenticTurn(params: AgenticTurnParams): Promise<AgenticTurnResult> {
-  const questionsByPhase = PHASE_QUESTIONS;
+  // Merge session overrides on top of built-in PHASE_QUESTIONS.
+  // DREAM prep questions take priority per lens; fallback to built-ins for
+  // any lens not covered by the override.
+  const questionsByPhase: Record<string, FixedQuestion[]> = { ...PHASE_QUESTIONS };
+  for (const [lens, qs] of Object.entries(params.sessionQuestions ?? {})) {
+    if (qs && qs.length > 0) questionsByPhase[lens] = qs;
+  }
   const phaseQuestions = questionsByPhase[params.currentPhase] || [];
   const phaseMessages = params.sessionMessages.filter((m) => m.phase === params.currentPhase);
   const participantAnswers = phaseMessages

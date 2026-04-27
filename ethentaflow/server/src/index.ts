@@ -1086,6 +1086,7 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
             participantDepartment: undefined,
             includeRegulation: agenticIncludeRegulation,
             preferredInteractionMode: 'VOICE',
+            sessionQuestions,
           }).catch(() => null),
           timeoutPromise,
         ]);
@@ -1739,6 +1740,7 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
             participantDepartment: undefined,
             includeRegulation: agenticIncludeRegulation,
             preferredInteractionMode: 'VOICE',
+            sessionQuestions,
           });
         }
       } catch (err) {
