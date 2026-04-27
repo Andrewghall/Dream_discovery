@@ -19,10 +19,10 @@ function bandForScore(score: number | null): {
   colorClass: string;
 } {
   if (!score) return { band: '—', colorClass: 'bg-muted' };
-  if (score <= 2) return { band: 'Reactive', colorClass: 'bg-red-100' };
-  if (score <= 4) return { band: 'Emerging', colorClass: 'bg-orange-100' };
-  if (score <= 6) return { band: 'Defined', colorClass: 'bg-yellow-100' };
-  if (score <= 8) return { band: 'Optimised', colorClass: 'bg-green-100' };
+  if (score === 1) return { band: 'Reactive', colorClass: 'bg-red-100' };
+  if (score === 2) return { band: 'Emerging', colorClass: 'bg-orange-100' };
+  if (score === 3) return { band: 'Defined', colorClass: 'bg-yellow-100' };
+  if (score === 4) return { band: 'Optimised', colorClass: 'bg-green-100' };
   return { band: 'Intelligent', colorClass: 'bg-blue-100' };
 }
 
@@ -54,7 +54,7 @@ export function TripleRatingInput({
     []
   );
 
-  const scores = useMemo(() => Array.from({ length: 10 }, (_, i) => i + 1), []);
+  const scores = useMemo(() => Array.from({ length: 5 }, (_, i) => i + 1), []);
 
   const handlePick = (key: RatingKey, value: number) => {
     setRatings((prev) => ({ ...prev, [key]: value }));
@@ -71,8 +71,8 @@ export function TripleRatingInput({
       {questionText && (
         <div className="text-sm font-medium whitespace-pre-wrap leading-snug">{questionText}</div>
       )}
-      <div className="text-sm font-medium">Quick rating (click 1–10 for each)</div>
-      <div className="text-xs text-muted-foreground">Maturity bands: 1–2 Reactive, 3–4 Emerging, 5–6 Defined, 7–8 Optimised, 9–10 Intelligent</div>
+      <div className="text-sm font-medium">Quick rating (click 1–5 for each)</div>
+      <div className="text-xs text-muted-foreground">Maturity bands: 1 Reactive, 2 Emerging, 3 Defined, 4 Optimised, 5 Intelligent</div>
 
       {Array.isArray(maturityScale) && maturityScale.length === 5 && (
         <div className="space-y-1">
@@ -101,7 +101,7 @@ export function TripleRatingInput({
                   <div className="text-xs text-muted-foreground">{row.helper}</div>
                 </div>
                 <div className={cn('text-xs px-2 py-1 rounded-md border', band.colorClass)}>
-                  {currentVal ?? '—'} {currentVal ? `/10 · ${band.band}` : ''}
+                  {currentVal ?? '—'} {currentVal ? `/5 · ${band.band}` : ''}
                 </div>
               </div>
 

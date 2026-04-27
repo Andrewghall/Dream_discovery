@@ -6,13 +6,15 @@ import type {
   ConversationState,
   Lens,
   LensScore,
+  MaturityRating,
   ProbeCandidate,
   Signal,
   SignalType,
+  TruthNode,
   Turn,
 } from './types.js';
 
-const ALL_LENSES: Lens[] = ['people', 'commercial', 'partners', 'technology', 'operations', 'open'];
+const ALL_LENSES: Lens[] = ['people', 'commercial', 'partners', 'technology', 'operations', 'risk_compliance', 'open'];
 
 function initialLensScores(): Record<Lens, LensScore> {
   const scores = {} as Record<Lens, LensScore>;
@@ -35,6 +37,11 @@ export class SessionState {
   private _recentProbes: string[] = [];
   private _openingDone = false;
   private _onboardingDone = false;
+  private _maturityRatings: Map<Lens, MaturityRating> = new Map();
+  private _truthNodes: TruthNode[] = [];
+  /** Number of consecutive probes on the current thread within the active lens.
+   *  Resets on sideways move or lens transition. Used to trigger sideways pivots. */
+  private _threadProbeCount = 0;
 
   constructor(participantName?: string) {
     this.state = {
@@ -80,6 +87,31 @@ export class SessionState {
   // --- Onboarding ---
   get onboardingDone(): boolean { return this._onboardingDone; }
   markOnboardingDone(): void { this._onboardingDone = true; }
+
+  // --- Thread probe tracking (board model) ---
+  get threadProbeCount(): number { return this._threadProbeCount; }
+  incrementThreadProbe(): void { this._threadProbeCount++; }
+  resetThreadProbe(): void { this._threadProbeCount = 0; }
+
+  addMaturityRating(lens: Lens, rating: MaturityRating): void {
+    this._maturityRatings.set(lens, rating);
+    void this.mutate(s => {
+      if (!s.maturityRatings) s.maturityRatings = {};
+      s.maturityRatings[lens] = rating;
+    });
+  }
+
+  addTruthNode(node: TruthNode): void {
+    this._truthNodes.push(node);
+    void this.mutate(s => {
+      if (!s.truthNodes) s.truthNodes = [];
+      s.truthNodes.push(node);
+    });
+  }
+
+  getMaturityRating(lens: Lens): MaturityRating | undefined {
+    return this._maturityRatings.get(lens);
+  }
 
   snapshot(): ConversationState {
     return structuredClone(this.state);
@@ -176,6 +208,8 @@ export class SessionState {
   }
 
   async setLens(lens: Lens): Promise<void> {
+    const lensChanged = this.state.currentLens !== lens;
+    if (lensChanged) this._threadProbeCount = 0;
     return this.mutate(s => {
       if (s.currentLens !== lens) {
         // Park the outgoing lens if it was active

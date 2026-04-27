@@ -1,46 +1,75 @@
-// TTS streaming via Deepgram Aura.
-// Produces chunked audio which the server forwards to the client.
+// TTS streaming via ElevenLabs.
+// Uses their streaming PCM endpoint — 24kHz linear16, no container.
+// ElevenLabs voices are dramatically more natural than OpenAI for
+// conversational AI — proper sentence rhythm, intonation, British accent.
 //
-// Deepgram sends very small raw PCM chunks (~1–2KB each, ~40ms).
-// Scheduling dozens of tiny AudioBufferSourceNode instances on the client
-// causes audible gaps. We buffer server-side to MIN_CHUNK_BYTES before
-// forwarding, giving the client smooth 100ms+ blocks to schedule.
+// Voice options:
+//   Daniel    — onwK4e9ZLuTAKqWW03F9  — deep, authoritative, professional British male (premium tier)
+//   George    — JBFqnCBsd6RMkjVDRZzb  — warm, clear, conversational British male
+//   Harry     — SOYHLrjzK2X1ezoPC6cr  — friendly, natural British male
+//   Charlotte — XB0fDUnXU5powFXDhCwa  — warm, engaging, professional British female
+//   Alice     — Xb7hH8MSUJpSbSDYk0k2  — crisp, professional British female
+//   Lily      — pFZP5JQG7iQjIQuC4Bku  — warm, bright British female
+//
+// Model options:
+//   eleven_flash_v2_5   — lowest latency (~300ms), good quality
+//   eleven_turbo_v2_5   — balanced latency/quality
+//   eleven_multilingual_v2 — best quality, slightly higher latency
 
-import { createClient } from '@deepgram/sdk';
+import { Buffer } from 'node:buffer';
+
+// 24kHz, 16-bit mono = 48000 bytes/sec → 4800 bytes = 100ms chunks
+const MIN_CHUNK_BYTES = 4800;
+
+const ELEVENLABS_VOICE_ID = 'pFZP5JQG7iQjIQuC4Bku'; // Lily — warm, bright British female
+const ELEVENLABS_MODEL    = 'eleven_flash_v2_5';      // lowest latency (~300ms) — best for real-time conversation
 
 export interface TTSHandle {
   abort: () => void;
   done: Promise<void>;
 }
 
-// 24kHz, 16-bit mono = 48000 bytes/sec.
-// 4800 bytes = 100ms — large enough to schedule cleanly, small enough for low latency.
-const MIN_CHUNK_BYTES = 4800;
-
 export function synthesiseStream(
   apiKey: string,
   text: string,
   onAudio: (chunk: Buffer) => void,
 ): TTSHandle {
-  const client = createClient(apiKey);
   const controller = new AbortController();
 
   const done = (async () => {
     try {
-      const response = await client.speak.request(
-        { text },
-        {
-          model: 'aura-2-arcas-en',  // British English male voice
-          encoding: 'linear16',
-          sample_rate: 24000,
-          container: 'none',
+      // output_format must be a query param — body-only is ignored and returns mp3
+      const url = `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream?output_format=pcm_24000`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
         },
-      );
+        body: JSON.stringify({
+          text,
+          model_id: ELEVENLABS_MODEL,
+          voice_settings: {
+            stability: 0.65,          // higher = calmer, less pitch variation, more measured delivery
+            similarity_boost: 0.75,   // close to voice character
+            style: 0.20,              // low style = understated, no excitement or uplift
+            use_speaker_boost: true,  // keeps presence without adding energy
+            speed: 1.0,               // natural pace — not rushing
+          },
+        }),
+      });
 
-      const stream = await response.getStream();
-      if (!stream) return;
+      if (!response.ok) {
+        const err = await response.text().catch(() => response.statusText);
+        console.error(`[tts] ElevenLabs error ${response.status}: ${err}`);
+        return;
+      }
 
-      const reader = stream.getReader();
+      if (!response.body) return;
+
+      const reader = response.body.getReader();
       let pending = Buffer.alloc(0);
 
       while (true) {
@@ -49,10 +78,10 @@ export function synthesiseStream(
           return;
         }
 
-        const { value, done } = await reader.read();
+        const { value, done: streamDone } = await reader.read();
 
-        if (done) {
-          // Flush any remaining buffered audio
+        if (streamDone) {
+          // Flush remaining buffered audio
           if (pending.length > 0 && !controller.signal.aborted) {
             onAudio(pending);
           }
@@ -61,7 +90,7 @@ export function synthesiseStream(
 
         if (value) {
           pending = Buffer.concat([pending, Buffer.from(value)]);
-          // Send once we have at least MIN_CHUNK_BYTES accumulated
+          // Send in 100ms blocks for smooth scheduling
           while (pending.length >= MIN_CHUNK_BYTES) {
             if (controller.signal.aborted) return;
             onAudio(pending.subarray(0, MIN_CHUNK_BYTES));
@@ -71,7 +100,7 @@ export function synthesiseStream(
       }
     } catch (err) {
       if (!controller.signal.aborted) {
-        console.error('TTS error', err);
+        console.error('[tts] stream error', err);
       }
     }
   })();

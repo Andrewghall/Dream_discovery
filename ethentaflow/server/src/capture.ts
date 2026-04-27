@@ -84,7 +84,7 @@ export function startCapture(sessionId: string, participantName?: string): Captu
 
 function startFfmpegEncoder(outputPath: string, sampleRate: number): ChildProcess {
   // Expects raw linear16 PCM on stdin, writes opus in webm container.
-  return spawn('ffmpeg', [
+  const proc = spawn('ffmpeg', [
     '-f', 's16le',
     '-ar', String(sampleRate),
     '-ac', '1',
@@ -93,5 +93,20 @@ function startFfmpegEncoder(outputPath: string, sampleRate: number): ChildProces
     '-b:a', '32k',
     '-y',
     outputPath,
-  ], { stdio: ['pipe', 'ignore', 'ignore'] });
+  ], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+  proc.on('error', err => console.error(`[capture] ffmpeg spawn error (${outputPath}):`, err.message));
+  proc.on('exit', (code, signal) => {
+    if (code !== 0 && code !== null) console.error(`[capture] ffmpeg exited code=${code} (${outputPath})`);
+  });
+  // Log ffmpeg stderr only on errors (normally very noisy)
+  let stderrBuf = '';
+  proc.stderr?.on('data', (chunk: Buffer) => {
+    stderrBuf += chunk.toString();
+    // Only print last line if it looks like an error
+    const lines = stderrBuf.split('\n');
+    stderrBuf = lines[lines.length - 1] ?? '';
+  });
+
+  return proc;
 }

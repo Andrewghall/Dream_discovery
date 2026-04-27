@@ -5,6 +5,12 @@ import { readBlueprintFromJson } from '@/lib/workshop/blueprint';
 import { normalizeConversationPhase } from '@/lib/types/conversation';
 import { inferWorkshopRuntimeType } from '@/lib/workshop/workshop-definition';
 import {
+  type DeliveryMode,
+  type PreferredInteractionMode,
+  detectDeliveryMode,
+  formatTripleRatingPrompt,
+} from '@/lib/conversation/agentic-interview';
+import {
   getFixedQuestion,
   getFixedQuestionObject,
   buildQuestionsFromDiscoverySet,
@@ -31,7 +37,20 @@ function sessionNeedsRestart(session: any): boolean {
   }
 
   const firstMeta = firstAiQuestion.metadata as Record<string, unknown>;
-  if (firstMeta.phase !== 'intro' || firstMeta.index !== 0) {
+  const firstPhase = typeof firstMeta.phase === 'string' ? firstMeta.phase : '';
+  const isAgentic = firstMeta.deliveryMode === 'agentic';
+  if (
+    (!isAgentic && (firstPhase !== 'intro' || firstMeta.index !== 0)) ||
+    (
+      isAgentic &&
+      (
+        firstMeta.index !== 0 ||
+        firstPhase === 'intro' ||
+        firstPhase === 'prioritization' ||
+        firstPhase === 'summary'
+      )
+    )
+  ) {
     return true;
   }
 
@@ -95,7 +114,7 @@ function computeDisplayedPhaseProgress(params: {
   return Math.max(0, Math.min(100, Math.round(((index + 1) / totalQuestions) * 100)));
 }
 
-function resolveSessionConfig(workshop: any, questionSetVersion: string) {
+function resolveSessionConfig(workshop: any, questionSetVersion: string, deliveryMode: DeliveryMode) {
   const customQs = buildQuestionsFromDiscoverySet(workshop.discoveryQuestions);
   const blueprint = readBlueprintFromJson(workshop.blueprint);
   const blueprintQs =
@@ -107,7 +126,26 @@ function resolveSessionConfig(workshop: any, questionSetVersion: string) {
     ? includeRegulationFromBlueprint(blueprint)
     : (workshop.includeRegulation ?? true);
 
-  // First question is always intro[0]
+  const phaseOrder = customQs
+    ? Object.keys(customQs)
+    : blueprintQs
+      ? Object.keys(blueprintQs)
+      : ['intro', 'people', 'operations', 'technology', 'commercial', 'risk_compliance', 'partners', 'prioritization', 'summary'];
+
+  const firstAgenticLens = phaseOrder.find((phase) => !['intro', 'prioritization', 'summary'].includes(phase)) || 'people';
+
+  if (deliveryMode === 'agentic') {
+    const agenticQs = customQs?.[firstAgenticLens] || blueprintQs?.[firstAgenticLens];
+    const firstMessage = agenticQs
+      ? agenticQs[0].text
+      : getFixedQuestion(firstAgenticLens as any, 0, includeRegulation, questionSetVersion);
+    const firstQuestionObj: FixedQuestion | null = agenticQs
+      ? agenticQs[0]
+      : getFixedQuestionObject(firstAgenticLens as any, 0, includeRegulation, questionSetVersion);
+
+    return { includeRegulation, firstMessage, firstQuestionObj, firstPhase: firstAgenticLens };
+  }
+
   const introQs = customQs?.intro || blueprintQs?.intro;
   const firstMessage = introQs
     ? introQs[0].text
@@ -116,7 +154,43 @@ function resolveSessionConfig(workshop: any, questionSetVersion: string) {
     ? introQs[0]
     : getFixedQuestionObject('intro', 0, includeRegulation, questionSetVersion);
 
-  return { includeRegulation, firstMessage, firstQuestionObj };
+  return { includeRegulation, firstMessage, firstQuestionObj, firstPhase: 'intro' };
+}
+
+function normalizeDeliveryMode(value: unknown): DeliveryMode {
+  return value === 'scripted' ? 'scripted' : 'agentic';
+}
+
+function normalizePreferredMode(value: unknown): PreferredInteractionMode {
+  return value === 'TEXT' ? 'TEXT' : 'VOICE';
+}
+
+function buildQuestionMetadata(
+  question: FixedQuestion | null,
+  phase: string,
+  index: number,
+  deliveryMode: DeliveryMode,
+) {
+  return question
+    ? {
+        kind: 'question',
+        tag: question.tag,
+        index,
+        phase,
+        maturityScale: question.maturityScale,
+        deliveryMode,
+        exactOpener: index === 0,
+      }
+    : undefined;
+}
+
+function formatQuestionContent(question: FixedQuestion | null, fallbackText: string, phase: string): string {
+  if (!question) return fallbackText;
+  if (question.tag === 'triple_rating') {
+    const canonical = getFixedQuestionObject(phase as any, 0, true, 'v1');
+    return formatTripleRatingPrompt((canonical || question).text);
+  }
+  return question.text || fallbackText;
 }
 
 export async function POST(request: NextRequest) {
@@ -147,12 +221,17 @@ export async function POST(request: NextRequest) {
       consentGranted?: boolean;
       consentText?: string;
       consentVersion?: string;
+      deliveryMode?: DeliveryMode;
+      preferredMode?: PreferredInteractionMode;
     };
     const restart = body?.restart === true;
     const runType = body?.runType === 'FOLLOWUP' ? 'FOLLOWUP' : 'BASELINE';
     const questionSetVersion = typeof body?.questionSetVersion === 'string' && body.questionSetVersion.trim()
       ? body.questionSetVersion.trim()
       : 'v1';
+    const deliveryMode = normalizeDeliveryMode(body?.deliveryMode);
+    const preferredMode = normalizePreferredMode(body?.preferredMode);
+    const initialVoiceEnabled = preferredMode === 'VOICE';
 
     // Validate token and get participant
     const participant = await prisma.workshopParticipant.findUnique({
@@ -195,8 +274,8 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const { includeRegulation, firstMessage, firstQuestionObj } =
-        resolveSessionConfig(participant.workshop, questionSetVersion);
+      const { includeRegulation, firstMessage, firstQuestionObj, firstPhase } =
+        resolveSessionConfig(participant.workshop, questionSetVersion, deliveryMode);
 
       const createdSession = await (prisma as any).conversationSession.create({
         data: {
@@ -204,9 +283,9 @@ export async function POST(request: NextRequest) {
           participantId: participant.id,
           runType,
           questionSetVersion,
-          currentPhase: 'intro',
+          currentPhase: firstPhase,
           phaseProgress: 0,
-          voiceEnabled: true,
+          voiceEnabled: initialVoiceEnabled,
           includeRegulation,
         },
         include: {
@@ -218,17 +297,9 @@ export async function POST(request: NextRequest) {
         data: {
           sessionId: createdSession.id,
           role: 'AI',
-          content: firstMessage,
-          phase: 'intro',
-          metadata: firstQuestionObj
-            ? {
-                kind: 'question',
-                tag: firstQuestionObj.tag,
-                index: 0,
-                phase: 'intro',
-                maturityScale: firstQuestionObj.maturityScale,
-              }
-            : undefined,
+          content: formatQuestionContent(firstQuestionObj, firstMessage, firstPhase),
+          phase: firstPhase,
+          metadata: buildQuestionMetadata(firstQuestionObj, firstPhase, 0, deliveryMode),
         },
       });
 
@@ -261,6 +332,7 @@ export async function POST(request: NextRequest) {
         language: refetchedSession.language,
         voiceEnabled: refetchedSession.voiceEnabled,
         includeRegulation: refetchedSession.includeRegulation,
+        deliveryMode,
         lensLabels: getLensLabels(participant.workshop),
         organization: participant.workshop.organization,
         workshopType: inferWorkshopRuntimeType({
@@ -313,6 +385,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (session && detectDeliveryMode(session.messages || []) !== deliveryMode && session.status === 'IN_PROGRESS') {
+      await (prisma as any).conversationSession.deleteMany({
+        where: { id: session.id },
+      });
+      session = null;
+    }
+
     if (session?.status === 'IN_PROGRESS' && sessionNeedsRestart(session)) {
       await (prisma as any).conversationSession.deleteMany({
         where: {
@@ -324,8 +403,8 @@ export async function POST(request: NextRequest) {
 
     // Create new session if no session exists for this run type.
     if (!session) {
-      const { includeRegulation, firstMessage, firstQuestionObj } =
-        resolveSessionConfig(participant.workshop, questionSetVersion);
+      const { includeRegulation, firstMessage, firstQuestionObj, firstPhase } =
+        resolveSessionConfig(participant.workshop, questionSetVersion, deliveryMode);
 
       session = await (prisma as any).conversationSession.create({
         data: {
@@ -333,9 +412,9 @@ export async function POST(request: NextRequest) {
           participantId: participant.id,
           runType,
           questionSetVersion,
-          currentPhase: 'intro',
+          currentPhase: firstPhase,
           phaseProgress: 0,
-          voiceEnabled: true,
+          voiceEnabled: initialVoiceEnabled,
           includeRegulation,
         },
         include: {
@@ -383,17 +462,9 @@ export async function POST(request: NextRequest) {
         data: {
           sessionId: session.id,
           role: 'AI',
-          content: firstMessage,
-          phase: 'intro',
-          metadata: firstQuestionObj
-            ? {
-                kind: 'question',
-                tag: firstQuestionObj.tag,
-                index: 0,
-                phase: 'intro',
-                maturityScale: firstQuestionObj.maturityScale,
-              }
-            : undefined,
+          content: formatQuestionContent(firstQuestionObj, firstMessage, firstPhase),
+          phase: firstPhase,
+          metadata: buildQuestionMetadata(firstQuestionObj, firstPhase, 0, deliveryMode),
         },
       });
 
@@ -437,6 +508,7 @@ export async function POST(request: NextRequest) {
       language: session.language,
       voiceEnabled: session.voiceEnabled,
       includeRegulation: session.includeRegulation,
+      deliveryMode: detectDeliveryMode(session.messages || []),
       lensLabels: getLensLabels(participant.workshop),
       organization: participant.workshop.organization,
       workshopType: inferWorkshopRuntimeType({

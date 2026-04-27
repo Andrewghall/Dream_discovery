@@ -8,7 +8,44 @@ type ServerMessage =
   | { type: 'probe'; text: string; strategy: string }
   | { type: 'tts_start' }
   | { type: 'tts_end' }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'measure_prompt'; lens: string; question: string }
+  | { type: 'lens_rating'; lens: string; current: number; target: number; trajectory: string }
+  | { type: 'lens_phase'; lens: string; phase: string }
+  | { type: 'truth_node'; nodeId: string; lensId: string; statement: string; evidence: string; isSpecific: boolean; hasEvidence: boolean }
+  | { type: 'session_paused' }
+  | { type: 'session_resumed' }
+  | { type: 'session_complete' }
+  | {
+      type: 'coverage_update';
+      sections: Array<{
+        lens: string;
+        label: string;
+        sectionIndex: number;
+        isCurrent: boolean;
+        pct: number;
+        questionIndex: number;
+        scale: boolean;
+        gap: boolean;
+        evidence: boolean;
+        rootCause: boolean;
+        impact: boolean;
+      }>;
+      currentSection: number;
+      totalSections: number;
+      totalPct: number;
+      /** Epoch ms when Q1 was spoken for each section (0 = not started). 5-element array. */
+      sectionStartTimes: number[];
+    }
+  | {
+      type: 'interview_progress';
+      sectionIndex: number;
+      questionIndex: number;
+      sectionName: string;
+      progressLabel: string;
+      /** Epoch ms when the current section started. */
+      sectionStartedAt: number;
+    };
 
 export class WSClient {
   private ws: WebSocket | null = null;
@@ -50,8 +87,12 @@ export class WSClient {
     }
   }
 
-  sendStart(participantName?: string): void {
-    this.sendJson({ type: 'start', participantName });
+  sendStart(participantName?: string, participantTitle?: string, resumeSessionId?: string, lenses?: string[]): void {
+    this.sendJson({ type: 'start', participantName, participantTitle, resumeSessionId, ...(lenses?.length ? { lenses } : {}) });
+  }
+
+  sendPlaybackDone(): void {
+    this.sendJson({ type: 'playback_done' });
   }
 
   sendInterrupt(): void {

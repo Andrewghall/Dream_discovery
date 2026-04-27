@@ -1,7 +1,7 @@
 // Signal classifier - Haiku on partials.
 // Debounced: one in-flight per session.
 
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import type { Signal, SignalType, ConversationState } from './types.js';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -22,13 +22,13 @@ function loadSystemPrompt(): string {
 const SYSTEM_PROMPT = loadSystemPrompt();
 
 export class SignalClassifier {
-  private client: Anthropic;
+  private client: OpenAI;
   private inFlight = false;
   private pendingUtterance: string | null = null;
   private lastTriggerLength = 0;
 
   constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new OpenAI({ apiKey });
   }
 
   /** Classify an utterance. Debounced: discards intermediate calls if one in flight. */
@@ -71,17 +71,16 @@ export class SignalClassifier {
     const history = this.formatHistory(state);
     const userMessage = `Recent conversation history (most recent last):\n${history}\n\nCurrent utterance (may be incomplete):\n"${utterance}"\n\nReturn JSON only.`;
 
-    const response = await this.client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+    const response = await this.client.chat.completions.create({
+      model: 'gpt-4o-mini',
       max_tokens: 150,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
     });
 
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map(b => b.text)
-      .join('');
+    const text = response.choices[0]?.message?.content ?? '';
 
     return this.parseSignals(text);
   }

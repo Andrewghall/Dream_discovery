@@ -4,8 +4,7 @@
  * GTM Free-Flow Conversation View
  *
  * Voice-first discovery UI for GTM workshops. The current question is always
- * visible on screen. Participants can respond by voice (auto-recorded via VAD)
- * or by typing. Triple-rating questions always show the visual widget.
+ * visible on screen. Participants respond by voice only (auto-recorded via VAD).
  *
  * TTS: OpenAI tts-1-hd + nova (warm, natural) via /api/speak-discovery.
  * No browser TTS, no transcript shown — just the current question + state orb.
@@ -18,9 +17,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Image from 'next/image';
-import { speakGtm, stopGtmAudio } from '@/lib/utils/gtm-tts';
+import { prefetchGtm, speakGtm, stopGtmAudio } from '@/lib/utils/gtm-tts';
 import { ProgressIndicator } from '@/components/chat/progress-indicator';
-import { TripleRatingInput } from '@/components/chat/triple-rating-input';
 import { normalizeConversationPhase } from '@/lib/types/conversation';
 import type { Message } from '@/lib/types/conversation';
 
@@ -48,6 +46,14 @@ function isQuestionMeta(meta: unknown): meta is QuestionMeta {
   return r.kind === 'question' && typeof r.phase === 'string' && typeof r.index === 'number';
 }
 
+function getInitialPhaseElapsedSeconds(messages: Message[], phase: string): number {
+  const firstPhaseMessage = messages.find((message) => message.phase === phase && message.role === 'AI');
+  if (!firstPhaseMessage?.createdAt) return 0;
+  const createdAt = Date.parse(String(firstPhaseMessage.createdAt));
+  if (!Number.isFinite(createdAt)) return 0;
+  return Math.max(0, Math.min(300, Math.floor((Date.now() - createdAt) / 1000)));
+}
+
 interface LensLabel { key: string; label: string }
 
 interface GtmFreeFlowViewProps {
@@ -65,13 +71,41 @@ interface GtmFreeFlowViewProps {
   onSessionComplete: () => void;
 }
 
+type SpeechRecognitionAlternative = { transcript: string };
+type SpeechRecognitionResult = { 0: SpeechRecognitionAlternative; isFinal: boolean };
+type SpeechRecognitionResultList = ArrayLike<SpeechRecognitionResult> & { length: number };
+type SpeechRecognitionResultEvent = { results: SpeechRecognitionResultList };
+type SpeechRecognitionErrorEvent = { error: string };
+type SpeechRecognitionInstance = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onstart: null | (() => void);
+  onresult: null | ((event: SpeechRecognitionResultEvent) => void);
+  onerror: null | ((event: SpeechRecognitionErrorEvent) => void);
+  onend: null | (() => void);
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as Record<string, unknown>;
+  const ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  return typeof ctor === 'function' ? (ctor as SpeechRecognitionConstructor) : null;
+}
+
 // ── VAD constants ─────────────────────────────────────────────────────────────
 
 const VAD_ENERGY_SPEAK  = 0.018;
 const VAD_ENERGY_NOISE  = 0.010;
-const VAD_SILENCE_MS    = 2500;
+const VAD_SILENCE_MS    = 1200;
 const VAD_MAX_RECORD_MS = 45_000;
 const VAD_POLL_MS       = 80;
+const INTRO_TTS_SPEED   = 1.0;
+const QUESTION_TTS_SPEED = 1.07;
 
 // ── Build welcome text ────────────────────────────────────────────────────────
 
@@ -91,7 +125,7 @@ function buildWelcome(clientName: string | null, lensLabels: LensLabel[] | null)
     `Hi — welcome to the discovery conversation${client ? ' ' + client : ''}.`,
     `Today we'll explore ${lensCount} areas together: ${areaNames}.`,
     `The whole session takes around ${durationMin} to ${durationMin + 5} minutes, and there are no right or wrong answers — just speak freely about your real experience.`,
-    `I'll ask each question out loud, and you can respond by speaking or by typing below. Let's get started.`,
+    `I'll ask each question out loud, and you can respond in your own words. Let's get started.`,
   ].join(' ');
 }
 
@@ -203,20 +237,14 @@ export function GtmFreeFlowView({
 }: GtmFreeFlowViewProps) {
   const [convState, setConvState]             = useState<ConvState>(sessionStatus === 'COMPLETED' ? 'done' : 'idle');
   const [energyLevel, setEnergyLevel]         = useState(0);
-  const [currentQuestion, setCurrentQuestion] = useState<string | null>(() => {
-    const last = [...initialMessages].reverse().find(m => m.role === 'AI');
-    return last?.content ?? null;
-  });
-  const [currentMeta, setCurrentMeta]         = useState<QuestionMeta | null>(() => {
-    const last = [...initialMessages].reverse().find(m => m.role === 'AI' && isQuestionMeta(m.metadata));
-    return last && isQuestionMeta(last.metadata) ? last.metadata : null;
-  });
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
+  const [currentMeta, setCurrentMeta]         = useState<QuestionMeta | null>(null);
   const [currentPhase, setCurrentPhase]       = useState(initialPhase || 'intro');
   const [phaseProgress, setPhaseProgress]     = useState(initialPhaseProgress || 0);
-  const [textDraft, setTextDraft]             = useState('');
   const [errorMsg, setErrorMsg]               = useState<string | null>(null);
-
-  const isTripleRating = currentMeta?.tag === 'triple_rating';
+  const [speechRecognitionSupported]          = useState(() => getSpeechRecognitionConstructor() !== null);
+  const [phaseElapsedSeconds, setPhaseElapsedSeconds] = useState(() => getInitialPhaseElapsedSeconds(initialMessages, initialPhase || 'intro'));
+  const [voiceReady, setVoiceReady]           = useState(false);
 
   // Refs
   const sessionEpochRef        = useRef(0);
@@ -229,8 +257,51 @@ export function GtmFreeFlowView({
   const maxDurationTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSpeechRef           = useRef(false);
   const silenceStartRef        = useRef<number | null>(null);
+  const recognitionRef         = useRef<SpeechRecognitionInstance | null>(null);
   const convStateRef           = useRef<ConvState>(convState);
   useEffect(() => { convStateRef.current = convState; }, [convState]);
+  const lastPhaseRef           = useRef(initialPhase || 'intro');
+
+  useEffect(() => {
+    if (currentPhase !== lastPhaseRef.current) {
+      lastPhaseRef.current = currentPhase;
+      setPhaseElapsedSeconds(0);
+    }
+  }, [currentPhase]);
+
+  useEffect(() => {
+    if (convState === 'idle' || convState === 'done') return;
+    const timer = setInterval(() => {
+      setPhaseElapsedSeconds((seconds) => Math.min(seconds + 1, 300));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [convState, currentPhase]);
+
+  useEffect(() => {
+    if (convState !== 'idle') return;
+    let cancelled = false;
+
+    setVoiceReady(false);
+
+    const welcomeText = buildWelcome(clientName, lensLabels);
+    const currentAi = [...initialMessages].reverse().find((message) => message.role === 'AI');
+    const firstQuestionText = currentAi?.content ?? '';
+
+    void (async () => {
+      await Promise.all([
+        prefetchGtm(welcomeText, token, INTRO_TTS_SPEED),
+        firstQuestionText ? prefetchGtm(firstQuestionText, token, QUESTION_TTS_SPEED) : Promise.resolve(),
+      ]);
+
+      if (!cancelled) {
+        setVoiceReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientName, convState, initialMessages, lensLabels, token]);
 
   // ── Stop audio capture ────────────────────────────────────────────────────
   const stopAudioCapture = useCallback(() => {
@@ -238,6 +309,10 @@ export function GtmFreeFlowView({
     if (maxDurationTimerRef.current)  { clearTimeout(maxDurationTimerRef.current); maxDurationTimerRef.current = null; }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
+      recognitionRef.current = null;
     }
     if (audioCtxRef.current)          { void audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
     if (streamRef.current)            { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
@@ -256,7 +331,7 @@ export function GtmFreeFlowView({
       const res = await fetch('/api/conversation/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, userMessage: content }),
+        body: JSON.stringify({ sessionId, userMessage: content, token }),
       });
       if (epoch !== sessionEpochRef.current) return;
       if (!res.ok) throw new Error('API error');
@@ -282,9 +357,11 @@ export function GtmFreeFlowView({
       const isComplete = data.status === 'COMPLETED';
       setConvState('ai-speaking');
 
+      void prefetchGtm(data.message.content, token, QUESTION_TTS_SPEED);
+
       // Speak the response with natural OpenAI TTS
       try {
-        await speakGtm(data.message.content, token);
+        await speakGtm(data.message.content, token, QUESTION_TTS_SPEED);
       } catch {
         // TTS failed — still continue the conversation
       }
@@ -311,16 +388,6 @@ export function GtmFreeFlowView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, token, stopAudioCapture, onSessionComplete]);
 
-  // ── Handle text submit ────────────────────────────────────────────────────
-  const handleTextSubmit = useCallback(() => {
-    const text = textDraft.trim();
-    if (!text) return;
-    stopAudioCapture();
-    setTextDraft('');
-    const epoch = sessionEpochRef.current;
-    void sendMessage(text, epoch);
-  }, [textDraft, stopAudioCapture, sendMessage]);
-
   // ── Submit recorded audio ─────────────────────────────────────────────────
   const submitRecording = useCallback(async (blob: Blob, epoch: number) => {
     if (epoch !== sessionEpochRef.current) return;
@@ -345,7 +412,7 @@ export function GtmFreeFlowView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopAudioCapture, sendMessage]);
 
-  // ── Start listening (mic + VAD) ───────────────────────────────────────────
+  // ── Start listening (browser live speech recognition first, recorder fallback) ──
   // eslint-disable-next-line prefer-const
   let startListening: (epoch: number) => Promise<void>;
 
@@ -354,8 +421,118 @@ export function GtmFreeFlowView({
     if (epoch !== sessionEpochRef.current) return;
     stopAudioCapture();
     setConvState('awaiting-speech');
+    setErrorMsg(null);
     hasSpeechRef.current   = false;
     silenceStartRef.current = null;
+
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (SpeechRecognition) {
+      try {
+        const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        permissionStream.getTracks().forEach((track) => track.stop());
+      } catch {
+        setErrorMsg('Microphone access is required. Please allow microphone and refresh.');
+        return;
+      }
+      if (epoch !== sessionEpochRef.current) return;
+
+      let finalTranscriptSent = false;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-GB';
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        if (epoch !== sessionEpochRef.current) return;
+        setConvState('awaiting-speech');
+      };
+
+      recognition.onresult = (event) => {
+        if (epoch !== sessionEpochRef.current) return;
+
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = 0; i < event.results.length; i++) {
+          const transcript = event.results[i][0]?.transcript?.trim() || '';
+          if (!transcript) continue;
+          if (event.results[i].isFinal) {
+            finalTranscript += ` ${transcript}`;
+          } else {
+            interimTranscript += ` ${transcript}`;
+          }
+        }
+
+        const interim = interimTranscript.trim();
+        const finalText = finalTranscript.trim();
+
+        if (interim) {
+          setConvState('user-speaking');
+        }
+
+        if (finalText) {
+          finalTranscriptSent = true;
+          try { recognition.stop(); } catch { /* ignore */ }
+          recognitionRef.current = null;
+          void sendMessage(finalText, epoch);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (epoch !== sessionEpochRef.current) return;
+        recognitionRef.current = null;
+
+        if (event.error === 'no-speech') {
+          setErrorMsg('No speech detected. Listening again…');
+          setTimeout(() => {
+            if (epoch === sessionEpochRef.current) {
+              setErrorMsg(null);
+              void startListening(epoch);
+            }
+          }, 800);
+          return;
+        }
+
+        setErrorMsg('Live transcription is unavailable. Falling back to recorded transcription…');
+        setTimeout(() => {
+          if (epoch === sessionEpochRef.current) {
+            setErrorMsg(null);
+            void startRecorderListening(epoch);
+          }
+        }, 300);
+      };
+
+      recognition.onend = () => {
+        if (epoch !== sessionEpochRef.current) return;
+        recognitionRef.current = null;
+        if (!finalTranscriptSent && convStateRef.current !== 'processing') {
+          setErrorMsg('Didn’t catch that clearly — listening again…');
+          setTimeout(() => {
+            if (epoch === sessionEpochRef.current) {
+              setErrorMsg(null);
+              void startListening(epoch);
+            }
+          }, 700);
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+      return;
+    }
+
+    void startRecorderListening(epoch);
+  }, [stopAudioCapture, sendMessage]);
+
+  // eslint-disable-next-line prefer-const
+  let startRecorderListening: (epoch: number) => Promise<void>;
+
+  // eslint-disable-next-line prefer-const
+  startRecorderListening = useCallback(async (epoch: number) => {
+    if (epoch !== sessionEpochRef.current) return;
+    stopAudioCapture();
+    setConvState('awaiting-speech');
 
     let stream: MediaStream;
     try {
@@ -438,15 +615,15 @@ export function GtmFreeFlowView({
 
     // 1. Welcome
     const welcomeText = buildWelcome(clientName, lensLabels);
-    try { await speakGtm(welcomeText, token); } catch { /* continue */ }
+    const currentAi = [...initialMessages].reverse().find(m => m.role === 'AI');
+    try { await speakGtm(welcomeText, token, INTRO_TTS_SPEED); } catch { /* continue */ }
     if (epoch !== sessionEpochRef.current) return;
 
     // 2. First question (already in initialMessages)
-    const firstAi = initialMessages.find(m => m.role === 'AI');
-    if (firstAi) {
-      setCurrentQuestion(firstAi.content);
-      setCurrentMeta(isQuestionMeta(firstAi.metadata) ? firstAi.metadata : null);
-      try { await speakGtm(firstAi.content, token); } catch { /* continue */ }
+    if (currentAi) {
+      setCurrentQuestion(currentAi.content);
+      setCurrentMeta(isQuestionMeta(currentAi.metadata) ? currentAi.metadata : null);
+      try { await speakGtm(currentAi.content, token, QUESTION_TTS_SPEED); } catch { /* continue */ }
       if (epoch !== sessionEpochRef.current) return;
     }
 
@@ -483,7 +660,7 @@ export function GtmFreeFlowView({
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 gap-6 overflow-y-auto">
+        <div className={`flex-1 flex flex-col items-center justify-center px-6 gap-6 overflow-y-auto ${convState === 'idle' ? 'py-8' : 'pt-32 pb-8 lg:pt-8'}`}>
 
           {convState === 'idle' ? (
             // ── Landing ───────────────────────────────────────────────────
@@ -491,21 +668,24 @@ export function GtmFreeFlowView({
               <div>
                 <h1 className="text-2xl font-semibold text-slate-800 mb-2">Discovery Conversation</h1>
                 <p className="text-slate-500 text-sm leading-relaxed">
-                  A relaxed, natural conversation about your go-to-market reality.
-                  You can respond by speaking or typing — whichever feels easier.
+                  A relaxed, natural voice conversation about your go-to-market reality.
+                  You will answer each question aloud.
                 </p>
               </div>
               <Orb state="idle" energyLevel={0} />
               <button
                 type="button"
                 onClick={() => void handleStart()}
+                disabled={!voiceReady}
                 className="px-10 py-4 rounded-xl text-white font-semibold text-base shadow-md hover:opacity-90 active:scale-95 transition-all"
                 style={{ backgroundColor: accent }}
               >
-                Begin Conversation
+                {voiceReady ? 'Begin Conversation' : 'Preparing Voice…'}
               </button>
               <p className="text-xs text-slate-400">
-                Your microphone will be used to capture your voice responses.
+                {voiceReady
+                  ? 'Your microphone will be used to capture your voice responses.'
+                  : 'Preparing the voice interview so it starts immediately.'}
               </p>
             </div>
 
@@ -532,6 +712,11 @@ export function GtmFreeFlowView({
                   <p className="text-slate-800 text-base leading-relaxed font-medium">
                     {currentQuestion}
                   </p>
+                  {currentMeta?.tag === 'triple_rating' && (
+                    <p className="mt-3 text-sm text-slate-500">
+                      Answer aloud with three scores from 1 to 5: where things are today, where they should be, and where they will be if nothing changes.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -546,46 +731,13 @@ export function GtmFreeFlowView({
                 {errorMsg && (
                   <p className="text-xs text-amber-600 animate-pulse text-center">{errorMsg}</p>
                 )}
+                {convState !== 'processing' && !speechRecognitionSupported && (
+                  <p className="text-xs text-slate-400 text-center">
+                    Browser live speech recognition is unavailable. Using fallback voice capture.
+                  </p>
+                )}
               </div>
 
-              {/* Triple-rating visual — always on screen */}
-              {isTripleRating && currentMeta && (convState === 'awaiting-speech' || convState === 'user-speaking' || convState === 'processing' || convState === 'ai-speaking') && (
-                <div className="w-full">
-                  <TripleRatingInput
-                    questionText={currentQuestion ?? ''}
-                    maturityScale={currentMeta.maturityScale}
-                    disabled={convState === 'processing' || convState === 'ai-speaking'}
-                    onSubmit={(value) => {
-                      stopAudioCapture();
-                      const epoch = sessionEpochRef.current;
-                      void sendMessage(value, epoch);
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Text input — always available as fallback */}
-              {!isTripleRating && convState !== 'processing' && convState !== 'ai-speaking' && (
-                <div className="w-full flex gap-2">
-                  <input
-                    type="text"
-                    value={textDraft}
-                    onChange={e => setTextDraft(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextSubmit(); } }}
-                    placeholder="Or type your response here…"
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTextSubmit}
-                    disabled={!textDraft.trim()}
-                    className="px-4 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-40 transition-opacity"
-                    style={{ backgroundColor: accent }}
-                  >
-                    Send
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -603,6 +755,8 @@ export function GtmFreeFlowView({
           phaseProgress={phaseProgress}
           includeRegulation={false}
           lensLabels={lensLabels}
+          phaseElapsedSeconds={phaseElapsedSeconds}
+          phaseMaxSeconds={300}
         />
       )}
     </div>

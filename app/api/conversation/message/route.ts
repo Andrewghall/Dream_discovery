@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import {
+  detectDeliveryMode,
+  generateAgenticTurn,
+} from '@/lib/conversation/agentic-interview';
+import {
   FixedQuestion,
   fixedQuestionsForVersion,
   getFixedQuestion,
@@ -110,7 +114,7 @@ async function generateClarificationAnswer(params: {
 
 export async function POST(request: NextRequest) {
   try {
-    const { sessionId, userMessage } = await request.json();
+    const { sessionId, userMessage, token } = await request.json();
 
     // Get session with all context
     const session = await prisma.conversationSession.findUnique({
@@ -129,6 +133,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
+    if (!token || !session.participant || session.participant.discoveryToken !== token) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     if (session.status === 'COMPLETED') {
       return NextResponse.json(
         { error: 'This discovery is already completed.' },
@@ -142,6 +150,7 @@ export async function POST(request: NextRequest) {
     let newProgress = session.phaseProgress;
     const includeRegulation = session.includeRegulation ?? session.workshop.includeRegulation ?? true;
     const questionSetVersion = (session as unknown as { questionSetVersion?: string | null }).questionSetVersion || 'v1';
+    const deliveryMode = detectDeliveryMode(session.messages || []);
 
     // Build question source (3-tier: discoveryQuestions > blueprint > legacy)
     const blueprint = readBlueprintFromJson((session.workshop as any).blueprint);
@@ -158,6 +167,13 @@ export async function POST(request: NextRequest) {
 
     const lastAiMessage = [...session.messages].reverse().find((m) => m.role === 'AI');
     const questionAsked = lastAiMessage?.content || '';
+    let liveSessionMessages = session.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      phase: message.phase,
+      metadata: message.metadata,
+      createdAt: message.createdAt,
+    }));
 
     // If user sent a message, save it and analyze
     if (userMessage) {
@@ -173,7 +189,7 @@ export async function POST(request: NextRequest) {
         (normalizedOriginal === 'skip' || normalizedTranslated === 'skip') && currentPhase === 'risk_compliance';
 
       // Save user message
-      await prisma.conversationMessage.create({
+      const createdParticipantMessage = await prisma.conversationMessage.create({
         data: {
           sessionId: session.id,
           role: 'PARTICIPANT',
@@ -192,6 +208,17 @@ export async function POST(request: NextRequest) {
           },
         },
       });
+
+      liveSessionMessages = [
+        ...liveSessionMessages,
+        {
+          role: createdParticipantMessage.role,
+          content: createdParticipantMessage.content,
+          phase: createdParticipantMessage.phase,
+          metadata: createdParticipantMessage.metadata,
+          createdAt: createdParticipantMessage.createdAt,
+        },
+      ];
 
       // Persist canonical answer snapshot for this question (session-scoped + stable key)
       if (!isSkipRegulation && !clarification) {
@@ -367,6 +394,77 @@ export async function POST(request: NextRequest) {
 
     // Use 3-tier question source: discoveryQuestions > blueprint > legacy
     const qs: Record<string, FixedQuestion[]> = customQs || blueprintQs || fixedQuestionsForVersion(questionSetVersion);
+
+    if (deliveryMode === 'agentic') {
+      const turn = await generateAgenticTurn({
+        openai: process.env.OPENAI_API_KEY ? openai : null,
+        sessionStartedAt: session.startedAt,
+        currentPhase,
+        phaseOrder,
+        questionsByPhase: qs,
+        sessionMessages: liveSessionMessages,
+        workshopContext: session.workshop.businessContext,
+        workshopName: session.workshop.name,
+        participantName: session.participant?.name,
+        participantRole: session.participant?.role,
+        participantDepartment: session.participant?.department,
+        includeRegulation,
+        preferredInteractionMode: session.voiceEnabled ? 'VOICE' : 'TEXT',
+      });
+
+      const aiMessage = await prisma.conversationMessage.create({
+        data: {
+          sessionId: session.id,
+          role: 'AI',
+          content: turn.assistantMessage,
+          phase: turn.nextPhase,
+          metadata: (turn.metadata as any) ?? undefined,
+        },
+      });
+
+      await prisma.conversationSession.update({
+        where: { id: session.id },
+        data: {
+          currentPhase: turn.nextPhase,
+          phaseProgress: turn.phaseProgress,
+          status: turn.completeSession ? 'COMPLETED' : session.status,
+          completedAt: turn.completeSession ? new Date() : session.completedAt,
+          totalDurationMs: turn.completeSession ? Date.now() - session.startedAt.getTime() : session.totalDurationMs,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (turn.completeSession) {
+        await prisma.workshopParticipant.update({
+          where: { id: session.participantId },
+          data: { responseCompletedAt: new Date() },
+        });
+      }
+
+      const lensLabels = (() => {
+        const lenses = (session.workshop as any).discoveryQuestions?.lenses;
+        if (!Array.isArray(lenses) || lenses.length === 0) return null;
+        return lenses.map((l: any) => ({ key: l.key, label: l.label }));
+      })();
+
+      return NextResponse.json({
+        message: {
+          id: aiMessage.id,
+          role: aiMessage.role,
+          content: aiMessage.content,
+          phase: aiMessage.phase,
+          metadata: aiMessage.metadata,
+          createdAt: aiMessage.createdAt,
+        },
+        currentPhase: turn.nextPhase,
+        phaseProgress: turn.phaseProgress,
+        includeRegulation,
+        lensLabels,
+        deliveryMode,
+        status: turn.completeSession ? 'COMPLETED' : session.status,
+      });
+    }
+
     const totalQuestionsInPhase = qs[currentPhase]?.length || 0;
     let nextQuestionIndex = answeredCountCurrentPhase;
 
@@ -456,6 +554,7 @@ export async function POST(request: NextRequest) {
       phaseProgress: newProgress,
       includeRegulation,
       lensLabels,
+      deliveryMode,
       status: isFinalClosingLine ? 'COMPLETED' : session.status,
     });
   } catch (error) {

@@ -1,7 +1,7 @@
 // Depth scorer - deterministic pre-check + Haiku fallback.
 // See docs/06-depth-model.md.
 
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,10 +75,10 @@ export function preCheckDepth(turnText: string):
 }
 
 export class DepthScorer {
-  private client: Anthropic;
+  private client: OpenAI;
 
   constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new OpenAI({ apiKey });
   }
 
   async score(turnText: string, currentSignal: string | null, lastProbe: string | null): Promise<DepthScore> {
@@ -117,17 +117,16 @@ export class DepthScorer {
     const timer = setTimeout(() => controller.abort(), 600);
 
     try {
-      const response = await this.client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+      const response = await this.client.chat.completions.create({
+        model: 'gpt-4o-mini',
         max_tokens: 200,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userMessage }],
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
       }, { signal: controller.signal });
 
-      const text = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map(b => b.text)
-        .join('');
+      const text = response.choices[0]?.message?.content ?? '';
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error('no JSON in response');
       const parsed = JSON.parse(match[0]);

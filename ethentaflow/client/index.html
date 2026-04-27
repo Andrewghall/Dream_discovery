@@ -27,7 +27,59 @@
       header .dot.live { background: #ff4c6b; animation: pulse 1.2s infinite; }
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
       #transcript { padding: 24px; overflow-y: auto; background: var(--bg); }
-      #debug { padding: 16px; overflow-y: auto; background: var(--panel); font-size: 13px; }
+      #sidebar { display: flex; flex-direction: column; background: var(--panel); overflow: hidden; }
+
+      /* Coverage dashboard */
+      #coverage { padding: 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+      .coverage-header { font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+      .coverage-row { display: grid; grid-template-columns: 72px 1fr 32px 46px;
+        align-items: center; gap: 8px; padding: 4px 0; }
+      .coverage-row-current .coverage-label { color: var(--accent); font-weight: 600; }
+      .coverage-label { font-size: 11px; color: var(--muted); white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; }
+      .coverage-qtag { display: inline-block; margin-left: 4px; font-size: 9px;
+        background: var(--accent); color: var(--bg); border-radius: 3px; padding: 1px 4px;
+        font-weight: 700; letter-spacing: 0.04em; }
+      .coverage-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+      .coverage-fill { height: 100%; background: var(--teal); border-radius: 2px;
+        transition: width 0.4s ease; }
+      .coverage-fill-complete { background: #22c55e; }
+      .coverage-pct { font-size: 10px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+      .coverage-total { display: grid; grid-template-columns: 72px 1fr 32px 46px;
+        align-items: center; gap: 8px; padding: 8px 0 2px;
+        border-top: 1px solid var(--border); margin-top: 6px; }
+      .coverage-total .coverage-label { color: var(--text); font-weight: 600; font-size: 11px; }
+      .coverage-total .coverage-pct { color: var(--text); font-weight: 600; }
+
+      /* Section & session timers */
+      .section-timer {
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        text-align: right;
+        letter-spacing: 0.02em;
+      }
+      .section-timer.timer-warn { color: #f59e0b; font-weight: 600; }
+      .section-timer.timer-over {
+        color: #ef4444;
+        font-weight: 700;
+        animation: timerPulse 1s infinite;
+      }
+      #session-timer {
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        letter-spacing: 0.05em;
+        min-width: 44px;
+        text-align: right;
+      }
+      #session-timer.timer-warn { color: #f59e0b; font-weight: 600; }
+      #session-timer.timer-over { color: #ef4444; font-weight: 700; animation: timerPulse 1s infinite; }
+      @keyframes timerPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+      /* Debug panel */
+      #debug { padding: 16px; overflow-y: auto; background: var(--panel); font-size: 13px; flex: 1; }
       #debug h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
         color: var(--muted); margin: 16px 0 6px; font-weight: 500; }
       #debug h2:first-child { margin-top: 0; }
@@ -46,15 +98,103 @@
       button:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
       button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
       #status { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+      /* Scoring card — shown during lens measurement questions */
+      .scoring-card {
+        margin: 20px 0;
+        padding: 20px 20px 16px;
+        border-radius: 10px;
+        background: var(--lens-bg, #1a1f30);
+        border: 1px solid var(--lens-accent, var(--accent));
+        max-width: 100%;
+        animation: cardIn 0.25s ease-out;
+      }
+      @keyframes cardIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .scoring-card-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--lens-accent, var(--accent));
+        margin-bottom: 16px;
+      }
+      .scoring-card-cells {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+      }
+      .scoring-card-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 14px 8px 12px;
+        border-radius: 6px;
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.06);
+        transition: background 0.2s, border-color 0.2s;
+      }
+      .scoring-card-cell.active {
+        background: var(--lens-accent, var(--accent));
+        border-color: var(--lens-accent, var(--accent));
+      }
+      .scoring-card-cell.active .scoring-card-num,
+      .scoring-card-cell.active .scoring-card-cell-label {
+        color: #fff;
+      }
+      .scoring-card-num {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--lens-accent, var(--accent));
+      }
+      .scoring-card-cell-label {
+        font-size: 10px;
+        color: var(--muted);
+        text-align: center;
+        letter-spacing: 0.02em;
+      }
+      .scoring-card-prompts {
+        margin-top: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border-top: 1px solid rgba(255,255,255,0.07);
+        padding-top: 12px;
+      }
+      .scoring-card-prompt-row {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .scoring-card-prompt-key {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--lens-accent, var(--accent));
+        min-width: 72px;
+        letter-spacing: 0.03em;
+      }
+      .scoring-card-prompt-desc {
+        font-size: 12px;
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>
     <header>
       <span class="dot" id="statusDot"></span>
       <h1>DREAMflow</h1>
+      <span id="interview-progress" style="margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;"></span>
+      <span id="session-timer" title="Total session time"></span>
     </header>
     <main id="transcript"></main>
-    <aside id="debug"></aside>
+    <aside id="sidebar">
+      <div id="coverage"></div>
+      <div id="debug"></div>
+    </aside>
     <footer>
       <button id="startBtn">Start Session</button>
       <button id="endBtn" class="secondary" disabled>End Session</button>

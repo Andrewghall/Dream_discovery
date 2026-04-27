@@ -196,6 +196,7 @@ const PHASE_DISPLAY_NAMES: Record<string, string> = {
   operations:      'Operations and Delivery',
   technology:      'Technology Credibility',
   commercial:      'Commercial Positioning',
+  customer:        'Customer Relationships',
   risk_compliance: 'Risk and Compliance',
   partners:        'Partner Relationships',
 };
@@ -301,8 +302,15 @@ async function handleSession(ws: WebSocket): Promise<void> {
   let currentEndpointingMode: EndpointingMode = 'long_thought';
   let currentExpectedAnswerType: ExpectedAnswerType = 'open_explanation';
   let activeTts: { abort: () => void } | null = null;
-  let ttsStartedAt = 0;          // wall-clock ms when current TTS stream began
-  const BARGEIN_GRACE_MS = 1500; // suppress barge-in for first 1.5s after TTS starts
+  let ttsStartedAt = 0;               // wall-clock ms when current TTS stream began
+  let lastTtsEndedAt = 0;             // wall-clock ms when the most recent TTS stream stopped
+  const BARGEIN_GRACE_MS = 2000;      // hard floor: no interruptions in the first 2s of TTS
+  const POST_TTS_BARGEIN_TAIL_MS = 1500;
+  const INTENTIONAL_INTERRUPT_RE = /\b(stop|wait|hold on|pause|move on|next (question|topic|one)|skip (this|that|it)|i don'?t know|i'?ve answered|let'?s move|enough|that'?s enough|never mind|nevermind|i('?ve)? told you|i already (said|told|answered))\b/i;
+  const REPEAT_RE = /\b(say (that|it|the question)? again|repeat( that| it| the question| please)?|come again|could you repeat|can you repeat|once more|one more time|what did you say|i didn'?t (catch|hear|get) (that|it)|sorry,? what|sorry,? again|pardon( me)?|run that by me again)\b/i;
+  const FILLER_RE = /^(uh+|um+|hm+|mm+|ah+|oh+|er+|the|a|an|and|so|you know|like|right|okay)(\s+(uh+|um+|hm+|mm+|ah+|oh+|er+|the|a|an|and|so|like))*[.,!?]?$/i;
+  let consecutiveBargeinAborts = 0;
+  let strictBargeinConfidenceFloor = 0.75;
   let endpointHandling = false;
   // Optional callback fired once the current TTS stream ends naturally (not on abort).
   // Used to chain a follow-on probe (e.g. Q1 after the intro) without combining them
@@ -344,6 +352,87 @@ async function handleSession(ws: WebSocket): Promise<void> {
   // ── Settle window state ─────────────────────────────────────────────────────
   let settleActive = false;       // true while the 1500ms settle window is running
   let settleAbortedFlag = false;  // set when new speech arrives during settle
+
+  function markTtsEnded(resetBargeinCounter = false): void {
+    lastTtsEndedAt = Date.now();
+    if (resetBargeinCounter) consecutiveBargeinAborts = 0;
+  }
+
+  function finishTtsPlayback(resetBargeinCounter = false): void {
+    markTtsEnded(resetBargeinCounter);
+    send({ type: 'tts_end' });
+    detector.onSystemSpeakingEnd();
+  }
+
+  function confirmBargeinAbort(logLine: string): void {
+    if (!activeTts) return;
+    console.log(logLine);
+    activeTts.abort();
+    activeTts = null;
+    finishTtsPlayback(false);
+    endpointHandling = false;
+    consecutiveBargeinAborts += 1;
+    if (consecutiveBargeinAborts >= 2 && strictBargeinConfidenceFloor < 0.85) {
+      strictBargeinConfidenceFloor = 0.85;
+      console.log('[bargein] strict floor escalated to 0.85');
+    }
+  }
+
+  function evaluateBargeinTranscript(
+    transcript: string,
+    words: Array<{ word?: string; confidence?: number }>,
+  ): { intercept: boolean; abortConfirmed: boolean } {
+    const trimmed = transcript.trim();
+    if (!trimmed) return { intercept: false, abortConfirmed: false };
+
+    const now = Date.now();
+    const inActiveTtsWindow = activeTts !== null;
+    const inPostTtsTail = !inActiveTtsWindow && lastTtsEndedAt > 0 && now - lastTtsEndedAt <= POST_TTS_BARGEIN_TAIL_MS;
+    if (!inActiveTtsWindow && !inPostTtsTail) {
+      return { intercept: false, abortConfirmed: false };
+    }
+
+    if (inActiveTtsWindow && now - ttsStartedAt < BARGEIN_GRACE_MS) {
+      console.log('[bargein] within 2s grace — ignored');
+      return { intercept: true, abortConfirmed: false };
+    }
+
+    const transcriptWords = trimmed
+      .split(/\s+/)
+      .map(word => word.replace(/^[^a-z0-9']+|[^a-z0-9']+$/gi, ''))
+      .filter(Boolean);
+    const wordCount = transcriptWords.length;
+    const confidenceValues = words
+      .filter(word => /[a-z0-9]/i.test(word.word ?? '') && typeof word.confidence === 'number')
+      .map(word => word.confidence as number);
+    const averageWordConfidence = confidenceValues.length > 0
+      ? confidenceValues.reduce((sum, confidence) => sum + confidence, 0) / confidenceValues.length
+      : 0;
+    const confLabel = averageWordConfidence.toFixed(2);
+
+    if (INTENTIONAL_INTERRUPT_RE.test(trimmed)) {
+      const logLine = `[bargein] intentional stop: ${JSON.stringify(trimmed)}`;
+      if (inActiveTtsWindow) {
+        confirmBargeinAbort(logLine);
+        return { intercept: false, abortConfirmed: true };
+      }
+      console.log(logLine);
+      return { intercept: false, abortConfirmed: false };
+    }
+
+    if (wordCount >= 3 && averageWordConfidence >= strictBargeinConfidenceFloor && !FILLER_RE.test(trimmed)) {
+      const logLine = `[bargein] substantive speech (words=${wordCount} conf=${confLabel}): ${JSON.stringify(trimmed)}`;
+      if (inActiveTtsWindow) {
+        confirmBargeinAbort(logLine);
+        return { intercept: false, abortConfirmed: true };
+      }
+      console.log(logLine);
+      return { intercept: false, abortConfirmed: false };
+    }
+
+    console.log(`[bargein] rejected — ambient or below threshold (words=${wordCount} conf=${confLabel}): ${JSON.stringify(trimmed)}`);
+    return { intercept: true, abortConfirmed: false };
+  }
 
   // ── Per-turn & frustration state ────────────────────────────────────────────
   let frustrationPending = false; // set by pause callback; cleared by endpoint handler
@@ -405,23 +494,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
   }
 
   function armSilenceWatchdog(): void {
-    if (agenticSessionComplete) return;
-    cancelSilenceWatchdog();
-    silenceWatchdogTimer = setTimeout(() => {
-      silenceWatchdogTimer = null;
-      const participantHasSpokenSinceLastAgentTurn = lastUserSpeechAt > lastAgentSpeechAt;
-      if (
-        detector.getState() === 'LISTENING' &&
-        lastProbeText &&
-        !endpointHandling &&
-        !activeTts &&
-        !agenticSessionComplete &&
-        !participantHasSpokenSinceLastAgentTurn
-      ) {
-        console.log('[watchdog] silence — re-asking last probe');
-        void safeSpeak(lastProbeText, lastProbeStrategy, currentEndpointingMode, currentExpectedAnswerType, 'silence-watchdog', true);
-      }
-    }, SILENCE_WATCHDOG_MS);
+    // Disabled — agent never re-asks unprompted. Only re-speaks on explicit user request.
   }
 
   function cancelSilenceWatchdog(): void {
@@ -526,7 +599,10 @@ async function handleSession(ws: WebSocket): Promise<void> {
     // All other sources (session-control, onboarding-followup, resume-welcome,
     // liveness-watchdog ack path): no canonical emission.
 
-    await speakProbe(text, strategy, endpointMode, answerType, isRecovery);
+    // safeSpeak is the authoritative dedup layer (bigram ring); always force
+    // speakProbe to deliver — state.trackProbe's exact-string gate must not
+    // silently drop a call that the ring already permitted.
+    await speakProbe(text, strategy, endpointMode, answerType, true);
   }
 
   // ── Liveness recovery ───────────────────────────────────────────────────────
@@ -642,7 +718,8 @@ async function handleSession(ws: WebSocket): Promise<void> {
       // measure_prompt + Q1 are deferred to afterTtsCallback so they appear on screen
       // only when client playback of the intro has actually finished (not when the server
       // stream ends, which can be 20-30s before the audio finishes playing on the client).
-      const intro = `Hi ${participantName}, thanks for making the time. I really appreciate it. We'll work through five areas of your business today. It should take around twenty to thirty minutes. There are no right answers here, just honest ones. Let's get started.`;
+      const firstName = participantName?.split(' ')[0] ?? participantName;
+      const intro = `Hi ${firstName}, thanks for making the time. I really appreciate it. We'll work through five areas of your business today. It should take around twenty to thirty minutes. There are no right answers here, just honest ones. Let's get started.`;
       afterTtsCallback = () => {
         send({ type: 'measure_prompt', lens: firstLens as Lens, question: q1Text });
         emitProgressUpdate();
@@ -751,8 +828,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
     tts.done.then(() => {
       if (activeTts === tts) {
         activeTts = null;
-        send({ type: 'tts_end' });
-        detector.onSystemSpeakingEnd();
+        finishTtsPlayback(true);
         primarySpeakerId = null;
         if (afterTtsCallback) {
           const fn = afterTtsCallback;
@@ -808,8 +884,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
       lastAgentSpeechAt = Date.now();
       if (activeTts === tts) {
         activeTts = null;
-        send({ type: 'tts_end' });
-        detector.onSystemSpeakingEnd();
+        finishTtsPlayback(true);
         // Reset speaker lock — Deepgram may reassign speaker IDs during TTS.
         primarySpeakerId = null;
         // Fire any chained follow-on probe BEFORE arming the watchdog so the
@@ -1022,10 +1097,17 @@ async function handleSession(ws: WebSocket): Promise<void> {
         settleAbortedFlag = true;
       }
 
+      const bargeinDecision = evaluateBargeinTranscript(alt.transcript, alt.words ?? []);
+      if (bargeinDecision.intercept) return;
+
       detector.onTranscript(msg);
       capture.writeFinalTranscript(msg);
 
       if (msg.is_final) {
+        // Keep liveness watchdog from firing during continuous speech — stamp on
+        // every confirmed final so the 6s window only starts after the user stops.
+        if (alt.transcript.trim()) lastUserSpeechAt = Date.now();
+
         // ── Transcript sanity: per-word confidence + phantom-number detection ─
         // Logs word:confidence pairs for every final. Emits a warning if any
         // numeric token has confidence < ASR_NUMBER_CONFIDENCE_THRESHOLD (0.6).
@@ -1106,18 +1188,6 @@ async function handleSession(ws: WebSocket): Promise<void> {
       speculativeAgenticPromise = null;
       speculativeAgenticTranscript = '';
       speculativeAgenticStale = false;
-      if (activeTts) {
-        if (Date.now() - ttsStartedAt < BARGEIN_GRACE_MS) {
-          console.log('[bargein] suppressed (within grace period — likely buffered noise)');
-        } else {
-          console.log('[bargein] speech started during TTS');
-          activeTts.abort();
-          activeTts = null;
-          send({ type: 'tts_end' });
-          detector.onSystemSpeakingEnd();
-          endpointHandling = false;
-        }
-      }
     },
     onClose: () => console.log(`[dg] closed (${state.sessionId})`),
     onError: err => {
@@ -1139,6 +1209,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
       lastUserSpeechAt > lastAgentSpeechAt &&
       !agenticSessionComplete &&
       !activeTts &&
+      !endpointHandling &&
       Date.now() - lastUserSpeechAt > LIVENESS_TIMEOUT_MS
     ) {
       void forceLivenessRecovery();
@@ -1178,12 +1249,31 @@ async function handleSession(ws: WebSocket): Promise<void> {
       // ================================================================
       if (!state.onboardingDone) {
         console.log(`[onboarding] user: "${finalUtterance}"`);
+
+        // Repeat request during onboarding — re-speak last probe, don't commit as turn.
+        if (REPEAT_RE.test(finalUtterance) && lastProbeText) {
+          console.log('[repeat] user requested repeat during onboarding — re-speaking');
+          await safeSpeak(lastProbeText, lastProbeStrategy, currentEndpointingMode, currentExpectedAnswerType, 'user-repeat-request', true);
+          emitStateUpdate();
+          return;
+        }
+
         const turn = await state.commitTurn(finalUtterance, 0, false, lastProbeText);
         capture.writeTurn(turn);
 
         try {
           const result = await onboardingAgent.respond(finalUtterance, elapsedMinutes());
           await state.recordSystemProbe(result.text);
+
+          // Capture name/title extracted by the agent during onboarding.
+          if (result.extractedName) {
+            participantName = result.extractedName;
+            console.log(`[onboarding] learned name: ${participantName}`);
+          }
+          if (result.extractedTitle) {
+            participantTitle = result.extractedTitle;
+            console.log(`[onboarding] learned title: ${participantTitle}`);
+          }
 
           if (result.done) {
             state.markOnboardingDone();
@@ -1274,6 +1364,15 @@ async function handleSession(ws: WebSocket): Promise<void> {
 
       if (isAcknowledgment) {
         console.log(`[interview] acknowledgment detected — waiting for substance: "${finalUtterance}"`);
+        emitStateUpdate();
+        return;
+      }
+
+      // --- Repeat request gate — participant asks to hear the last question again ---
+      // Meta-utterance: do NOT commit to session history or advance the conversation.
+      if (REPEAT_RE.test(trimmedUtt) && lastProbeText) {
+        console.log('[repeat] user requested repeat — re-speaking');
+        await safeSpeak(lastProbeText, lastProbeStrategy, currentEndpointingMode, currentExpectedAnswerType, 'user-repeat-request', true);
         emitStateUpdate();
         return;
       }
@@ -1837,8 +1936,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
             if (activeTts) {
               activeTts.abort();
               activeTts = null;
-              send({ type: 'tts_end' });
-              detector.onSystemSpeakingEnd();
+              finishTtsPlayback(false);
             }
             send({ type: 'session_paused' });
             console.log(`[session] paused`);
@@ -1872,8 +1970,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
           if (activeTts) {
             activeTts.abort();
             activeTts = null;
-            send({ type: 'tts_end' });
-            detector.onSystemSpeakingEnd();
+            finishTtsPlayback(false);
             // Cancel any pending chained probe — barge-in overrides the chain.
             pendingAfterTtsCallback = null;
           }

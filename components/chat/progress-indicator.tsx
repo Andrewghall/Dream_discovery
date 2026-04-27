@@ -11,6 +11,8 @@ interface ProgressIndicatorProps {
   phaseProgress: number;
   includeRegulation?: boolean;
   lensLabels?: LensLabel[] | null;
+  phaseElapsedSeconds?: number;
+  phaseMaxSeconds?: number;
 }
 
 function getIconForPhase(key: string): string {
@@ -26,7 +28,15 @@ function getIconForPhase(key: string): string {
   return icons[key.toLowerCase()] ?? '📋';
 }
 
-export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulation = true, lensLabels }: ProgressIndicatorProps) {
+export function ProgressIndicator({
+  currentPhase,
+  phaseProgress,
+  includeRegulation = true,
+  lensLabels,
+  phaseElapsedSeconds = 0,
+  phaseMaxSeconds = 300,
+}: ProgressIndicatorProps) {
+  void includeRegulation;
   const staticAreas = [
     { phase: 'people', name: 'People', icon: '👥' },
     { phase: 'operations', name: 'Operations', icon: '⚙️' },
@@ -55,10 +65,53 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
 
   const isCurrentPhase = (phase: string) => normalizedCurrentPhase === phase;
   const isCompleted = (phase: string) => getCompletionPercentage(phase) === 100;
+  const remainingSeconds = Math.max(0, phaseMaxSeconds - phaseElapsedSeconds);
+  const timerLabel = `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`;
+  const mobileCard = (
+    <div className="fixed left-0 right-0 top-0 z-20 lg:hidden border-b bg-white/95 backdrop-blur px-4 py-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700">Section Progress</h3>
+          <p className="text-xs text-muted-foreground">
+            {competencyAreas.length} sections
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-muted-foreground">Time left</div>
+          <div className={`text-sm font-semibold ${remainingSeconds <= 60 ? 'text-red-600' : 'text-slate-700'}`}>
+            {timerLabel}
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {competencyAreas.map((area) => {
+          const percentage = getCompletionPercentage(area.phase);
+          const current = isCurrentPhase(area.phase);
+          const completed = isCompleted(area.phase);
+          return (
+            <div key={area.phase} className={`rounded-lg border px-3 py-2 ${current ? 'border-primary bg-primary/5' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-medium text-slate-700">{area.icon} {area.name}</span>
+                <span className="text-xs font-semibold text-slate-500">{Math.round(percentage)}%</span>
+              </div>
+              <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                <div
+                  className={`h-full ${completed ? 'bg-green-600' : current ? 'bg-primary' : 'bg-slate-300'}`}
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="fixed right-0 top-0 h-screen w-80 bg-muted/30 border-l p-6 hidden lg:block">
-      <div className="space-y-6">
+    <>
+      {mobileCard}
+      <div className="fixed right-0 top-0 h-screen w-80 bg-muted/30 border-l p-6 hidden lg:block">
+        <div className="space-y-6">
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
             Discovery Progress
@@ -66,6 +119,14 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
           <p className="text-xs text-muted-foreground">
             {competencyAreas.length} Competency Area{competencyAreas.length !== 1 ? 's' : ''}
           </p>
+          <div className="mt-3 rounded-lg border bg-white px-3 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Time left in section</span>
+              <span className={`text-sm font-semibold ${remainingSeconds <= 60 ? 'text-red-600' : 'text-slate-700'}`}>
+                {timerLabel}
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -126,7 +187,8 @@ export function ProgressIndicator({ currentPhase, phaseProgress, includeRegulati
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
