@@ -208,12 +208,40 @@ const httpServer = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-wss.on('connection', ws => {
-  console.log('[conn] new session');
-  void handleSession(ws).catch(err => console.error('[session] fatal', err));
+wss.on('connection', (ws, req) => {
+  const wsUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  const workshopId = wsUrl.searchParams.get('workshop_id') ?? undefined;
+  console.log('[conn] new session', workshopId ? `workshop=${workshopId}` : '(no workshop)');
+  void handleSession(ws, workshopId).catch(err => console.error('[session] fatal', err));
 });
 
-async function handleSession(ws: WebSocket): Promise<void> {
+/**
+ * Fetch prep questions from the DREAM app for a given workshop.
+ * Returns a map of lens → question texts, or null if unavailable.
+ */
+async function fetchDreamPrepQuestions(workshopId: string): Promise<Record<string, string[]> | null> {
+  const dreamUrl = process.env['DREAM_API_URL'];
+  const dreamSecret = process.env['DREAMFLOW_SECRET'];
+  if (!dreamUrl || !dreamSecret) return null;
+  try {
+    const url = `${dreamUrl.replace(/\/$/, '')}/api/public/workshops/${workshopId}/dreamflow-questions`;
+    const res = await fetch(url, {
+      headers: { 'x-dreamflow-secret': dreamSecret },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      console.warn(`[dream] prep-questions fetch failed: ${res.status}`);
+      return null;
+    }
+    const json = await res.json() as { questions?: Record<string, string[]> };
+    return json.questions ?? null;
+  } catch (err) {
+    console.warn('[dream] prep-questions fetch error:', err);
+    return null;
+  }
+}
+
+async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> {
   const state = new SessionState();
   const detector = new EndpointDetector();
   const classifier = new SignalClassifier(OPENAI_API_KEY);
@@ -234,11 +262,13 @@ async function handleSession(ws: WebSocket): Promise<void> {
 
   // ── Agentic session state ──────────────────────────────────────────────────
   let agenticCurrentPhase = 'people';
-  let agenticPhaseOrder: string[] = ['people', 'operations', 'technology', 'commercial', 'partners', 'summary'];
+  let agenticPhaseOrder: string[] = ['people', 'operations', 'technology', 'commercial', 'customer', 'partners', 'summary'];
   let agenticSessionMessages: SessionMessage[] = [];
   let agenticSessionComplete = false;
   let agenticPhaseStartTimes = new Map<string, number>();
   let agenticIncludeRegulation = false;
+  // Per-lens questions from DREAM prep — overrides PHASE_QUESTIONS when set.
+  let sessionQuestions: Partial<Record<string, import('./phase-questions.js').FixedQuestion[]>> = {};
 
   /**
    * Returns true if the current phase has NOT yet received a participant answer.
@@ -248,6 +278,11 @@ async function handleSession(ws: WebSocket): Promise<void> {
     return agenticSessionMessages.filter(
       m => m.role === 'PARTICIPANT' && m.phase === agenticCurrentPhase,
     ).length === 0;
+  }
+
+  /** Returns the question list for a lens — custom prep questions take priority over built-ins. */
+  function lensQuestions(lens: string): import('./phase-questions.js').FixedQuestion[] {
+    return (sessionQuestions[lens] ?? PHASE_QUESTIONS[lens as keyof typeof PHASE_QUESTIONS]) ?? [];
   }
 
   /** Build sectionStartTimes array aligned to agenticPhaseOrder (excluding 'summary'). */
@@ -638,7 +673,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
         .filter((m) => m.role === 'AI' && m.phase === agenticCurrentPhase)
         .map((m) => { const meta = m.metadata as Record<string, unknown> | null; return typeof meta?.index === 'number' ? meta.index : -1; }),
     );
-    const nextQ = (PHASE_QUESTIONS[agenticCurrentPhase] ?? []).find((_, i) => i > 0 && !usedAiIndexes.has(i));
+    const nextQ = (lensQuestions(agenticCurrentPhase) ?? []).find((_, i) => i > 0 && !usedAiIndexes.has(i));
     if (nextQ) {
       console.log('[liveness] recovery=next-q');
       await safeSpeak(nextQ.text, 'drill_depth', 'long_thought', 'open_explanation', 'cascade-1', false,
@@ -649,7 +684,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
     const nextPhaseIdx = agenticPhaseOrder.indexOf(agenticCurrentPhase) + 1;
     if (nextPhaseIdx > 0 && nextPhaseIdx < agenticPhaseOrder.length) {
       const nextPhase = agenticPhaseOrder[nextPhaseIdx]!;
-      const nextOpener = PHASE_QUESTIONS[nextPhase]?.[0];
+      const nextOpener = lensQuestions(nextPhase)?.[0];
       if (nextOpener && nextPhase !== 'summary') {
         console.log(`[liveness] recovery=next-phase (${nextPhase})`);
         const nextText = formatTripleRatingPrompt(nextOpener.text);
@@ -706,7 +741,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
       void state.setLens(firstLens);
       send({ type: 'lens_phase', lens: firstLens as Lens, phase: 'measurement' });
 
-      const q1Text = formatTripleRatingPrompt(PHASE_QUESTIONS[firstLens]?.[0]?.text ?? '');
+      const q1Text = formatTripleRatingPrompt(lensQuestions(firstLens)?.[0]?.text ?? '');
       agenticPhaseStartTimes.set(firstLens, Date.now());
       // Emit question_created NOW (decision time) before intro audio starts.
       // question_presented fires later from inside the afterTtsCallback, at the
@@ -1285,7 +1320,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
 
             // Get Q1 (triple_rating) for the first lens
             const q1Text = formatTripleRatingPrompt(
-              PHASE_QUESTIONS[firstLens]?.[0]?.text ?? '',
+              lensQuestions(firstLens)?.[0]?.text ?? '',
             );
             agenticPhaseStartTimes.set(firstLens, Date.now());
 
@@ -1317,7 +1352,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
           agenticCurrentPhase = firstLens;
           await state.setLens(firstLens);
           send({ type: 'lens_phase', lens: firstLens, phase: 'measurement' });
-          const q1Text = formatTripleRatingPrompt(PHASE_QUESTIONS[firstLens]?.[0]?.text ?? '');
+          const q1Text = formatTripleRatingPrompt(lensQuestions(firstLens)?.[0]?.text ?? '');
           agenticPhaseStartTimes.set(firstLens, Date.now());
           send({ type: 'measure_prompt', lens: firstLens, question: q1Text });
           emitProgressUpdate();
@@ -1504,7 +1539,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
         const frustIdx = agenticPhaseOrder.indexOf(agenticCurrentPhase) + 1;
         if (frustIdx > 0 && frustIdx < agenticPhaseOrder.length && agenticPhaseOrder[frustIdx] !== 'summary') {
           const frustPhase = agenticPhaseOrder[frustIdx]!;
-          const frustOpener = PHASE_QUESTIONS[frustPhase]?.[0];
+          const frustOpener = lensQuestions(frustPhase)?.[0];
           if (frustOpener) {
             const frustText = formatTripleRatingPrompt(frustOpener.text);
             lensController.advanceLens();
@@ -1695,7 +1730,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
               return typeof meta?.index === 'number' ? meta.index : -1;
             }),
         );
-        const nextQ = (PHASE_QUESTIONS[agenticCurrentPhase] ?? []).find(
+        const nextQ = (lensQuestions(agenticCurrentPhase) ?? []).find(
           (_, i) => i > 0 && !usedAiIndexes.has(i),
         );
         if (nextQ) {
@@ -1708,7 +1743,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
         const nextPhaseIdx = agenticPhaseOrder.indexOf(agenticCurrentPhase) + 1;
         if (nextPhaseIdx > 0 && nextPhaseIdx < agenticPhaseOrder.length) {
           const nextPhase = agenticPhaseOrder[nextPhaseIdx]!;
-          const nextOpener = PHASE_QUESTIONS[nextPhase]?.[0];
+          const nextOpener = lensQuestions(nextPhase)?.[0];
           if (nextOpener) {
             const nextText = formatTripleRatingPrompt(nextOpener.text);
             console.log(`[fallback:2] generateAgenticTurn failed — advancing to ${nextPhase}`);
@@ -1852,7 +1887,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
       .catch(err => console.error('[spec probe] error', err));
   }
 
-  ws.on('message', (data, isBinary) => {
+  ws.on('message', async (data, isBinary) => {
     if (isBinary) {
       const buf = data as Buffer;
       dg.sendAudio(buf);
@@ -1911,6 +1946,35 @@ async function handleSession(ws: WebSocket): Promise<void> {
           }
 
           if (!resumed) {
+            // Store custom prep questions from DREAM — override PHASE_QUESTIONS per lens.
+            // The questions drive the agentic engine but DREAMflow still conducts a
+            // natural conversation — it doesn't read them out verbatim.
+            if (msg.questions && Object.keys(msg.questions).length > 0) {
+              for (const [lens, texts] of Object.entries(msg.questions)) {
+                if (Array.isArray(texts) && texts.length > 0) {
+                  sessionQuestions[lens] = texts.map((text, i) => ({
+                    text,
+                    tag: i === 0 ? 'triple_rating' : 'guide',
+                  }));
+                }
+              }
+              console.log(`[client] loaded custom prep questions for lenses: [${Object.keys(msg.questions).join(', ')}]`);
+            } else if (workshopId) {
+              // No questions passed via WS message — try to fetch from DREAM API.
+              const dreamQuestions = await fetchDreamPrepQuestions(workshopId);
+              if (dreamQuestions && Object.keys(dreamQuestions).length > 0) {
+                for (const [lens, texts] of Object.entries(dreamQuestions)) {
+                  if (Array.isArray(texts) && texts.length > 0) {
+                    sessionQuestions[lens] = texts.map((text, i) => ({
+                      text,
+                      tag: i === 0 ? 'triple_rating' : 'guide',
+                    }));
+                  }
+                }
+                console.log(`[dream] loaded prep questions from DREAM API for workshop=${workshopId}, lenses=[${Object.keys(dreamQuestions).join(', ')}]`);
+              }
+            }
+
             if (msg.lenses && msg.lenses.length > 0) {
               lensController = new LensController(msg.lenses as Exclude<Lens, 'open'>[]);
               agenticPhaseOrder = [...msg.lenses, 'summary'];
@@ -1918,7 +1982,7 @@ async function handleSession(ws: WebSocket): Promise<void> {
               console.log(`[client] start, participant=${participantName ?? '(anon)'}, title=${participantTitle ?? '(unknown)'}, lenses=[${msg.lenses.join(',')}]`);
             } else {
               lensController = new LensController(DEFAULT_LENS_SEQUENCE);
-              agenticPhaseOrder = ['people', 'operations', 'technology', 'commercial', 'partners', 'summary'];
+              agenticPhaseOrder = [...DEFAULT_LENS_SEQUENCE, 'summary'];
               agenticIncludeRegulation = false;
               console.log(`[client] start, participant=${participantName ?? '(anon)'}, title=${participantTitle ?? '(unknown)'}, lenses=default`);
             }

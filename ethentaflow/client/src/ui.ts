@@ -38,7 +38,7 @@ export class UI {
   private sessionTimerEl: HTMLElement | null = null;
 
   // Timer state
-  private sectionStartTimes: number[] = Array(5).fill(0); // epoch ms, 0 = not started
+  private sectionStartTimes: number[] = Array(6).fill(0); // epoch ms, 0 = not started — 6 sections
   private sessionStartedAt = 0;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private lastCoverageData: Parameters<UI['updateCoverage']>[0] | null = null;
@@ -359,7 +359,7 @@ export class UI {
     // Update section start time if the server just told us when this section began
     if (data.sectionStartedAt && data.sectionStartedAt > 0) {
       const idx = data.sectionIndex - 1;
-      if (idx >= 0 && idx < 5 && this.sectionStartTimes[idx] === 0) {
+      if (idx >= 0 && idx < this.sectionStartTimes.length && this.sectionStartTimes[idx] === 0) {
         this.sectionStartTimes[idx] = data.sectionStartedAt;
       }
     }

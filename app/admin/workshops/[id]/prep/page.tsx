@@ -1781,6 +1781,42 @@ export default function PrepPage({ params }: PageProps) {
             </div>
           )}
 
+          {/* ── DREAMflow Discovery Interview ─────────────── */}
+          {questionsData && (() => {
+            const dreamflowUrl = process.env.NEXT_PUBLIC_DREAMFLOW_URL;
+            if (!dreamflowUrl) return null;
+            const params = new URLSearchParams({ workshop_id: workshopId });
+            if (workshop?.clientName) params.set('name', workshop.clientName);
+            const href = `${dreamflowUrl}?${params.toString()}`;
+            return (
+              <div className="rounded-xl border-2 border-violet-300 bg-violet-50/50 dark:bg-violet-950/20 dark:border-violet-600/50 p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">🎙️</span>
+                      <h2 className="text-sm font-semibold text-violet-900 dark:text-violet-200">
+                        Start DREAMflow™ Discovery Interview
+                      </h2>
+                    </div>
+                    <p className="text-xs text-violet-700/80 dark:text-violet-400/70 max-w-lg">
+                      Opens the live agentic voice interview. EthentaFlow will use your prep questions as
+                      conversation context — it won&apos;t read them verbatim, it conducts a natural engaged session.
+                    </p>
+                  </div>
+                  <a href={href} target="_blank" rel="noopener noreferrer">
+                    <Button
+                      size="sm"
+                      className="flex-shrink-0 bg-violet-600 hover:bg-violet-700 text-white gap-2"
+                    >
+                      <ArrowRight className="h-4 w-4" />
+                      Launch Interview
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── Agent Orchestration Panel ─────────────────── */}
           <AgentOrchestrationPanel
             entries={agentConversation}

@@ -208,10 +208,16 @@ export type ClientMessage =
       resumeSessionId?: string;
       /**
        * Ordered list of lenses for this session, configured by the prep person.
-       * Omit to use the default 5-lens sequence (people, operations, technology, commercial, partners).
+       * Omit to use the default 6-lens sequence.
        * Include 'risk_compliance' to add it between commercial and partners.
        */
       lenses?: Array<Exclude<Lens, 'open'>>;
+      /**
+       * Per-lens question lists from the DREAM prep session.
+       * Keys are lens names; values are ordered question texts.
+       * When provided these replace the built-in PHASE_QUESTIONS for each lens.
+       */
+      questions?: Partial<Record<Exclude<Lens, 'open'>, string[]>>;
     }
   | { type: 'interrupt' }
   | { type: 'playback_done' }  // client audio has physically finished (buffer + echo holdoff)

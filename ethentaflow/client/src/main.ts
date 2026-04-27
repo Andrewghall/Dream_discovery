@@ -5,7 +5,14 @@ import { WSClient } from './ws.js';
 import { AudioPlayback } from './audio-playback.js';
 import { UI } from './ui.js';
 
-const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':3001/ws';
+// Build WebSocket URL — include workshop_id if present so the server can
+// auto-fetch prep questions from the DREAM API.
+function buildWsUrl(): string {
+  const base = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':3001/ws';
+  const workshopId = new URLSearchParams(location.search).get('workshop_id');
+  return workshopId ? `${base}?workshop_id=${encodeURIComponent(workshopId)}` : base;
+}
+const WS_URL = buildWsUrl();
 
 const ui = new UI();
 let mic: MicCapture | null = null;

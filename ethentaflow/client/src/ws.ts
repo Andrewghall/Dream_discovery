@@ -87,8 +87,21 @@ export class WSClient {
     }
   }
 
-  sendStart(participantName?: string, participantTitle?: string, resumeSessionId?: string, lenses?: string[]): void {
-    this.sendJson({ type: 'start', participantName, participantTitle, resumeSessionId, ...(lenses?.length ? { lenses } : {}) });
+  sendStart(
+    participantName?: string,
+    participantTitle?: string,
+    resumeSessionId?: string,
+    lenses?: string[],
+    questions?: Record<string, string[]>,
+  ): void {
+    this.sendJson({
+      type: 'start',
+      participantName,
+      participantTitle,
+      resumeSessionId,
+      ...(lenses?.length ? { lenses } : {}),
+      ...(questions && Object.keys(questions).length > 0 ? { questions } : {}),
+    });
   }
 
   sendPlaybackDone(): void {
