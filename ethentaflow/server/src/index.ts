@@ -387,6 +387,16 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
   // ── Settle window state ─────────────────────────────────────────────────────
   let settleActive = false;       // true while the 1500ms settle window is running
   let settleAbortedFlag = false;  // set when new speech arrives during settle
+  // When settle aborts, we park the pending probe here so a retry timer can
+  // speak it if no new endpoint fires within SETTLE_RETRY_MS.
+  let pendingSettleProbe: {
+    text: string; strategy: ProbeStrategy;
+    endpointingMode: EndpointingMode; expectedAnswerType: ExpectedAnswerType;
+    source: string; persist: boolean;
+    meta?: { phase: string; metadata: Record<string, unknown> } | undefined;
+  } | null = null;
+  let settleRetryTimer: NodeJS.Timeout | null = null;
+  const SETTLE_RETRY_MS = 4000; // if no new endpoint after abort, speak the probe
 
   function markTtsEnded(resetBargeinCounter = false): void {
     lastTtsEndedAt = Date.now();
@@ -660,10 +670,18 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
     settleActive = false;
     detector.discard();
 
-    // Recovery cascade — same as generateAgenticTurn error cascade:
-    // (1) repeat last probe
-    if (lastProbeText && !agenticSessionComplete) {
-      console.log('[liveness] recovery=repeat');
+    // Recovery cascade:
+    // Rule: NEVER repeat a probe the participant has already answered.
+    //   "nothing said" = no participant turns in this phase yet.
+    //   If the participant has spoken, always move forward — not backwards.
+    const participantTurnsInPhase = agenticSessionMessages.filter(
+      m => m.role === 'PARTICIPANT' && m.phase === agenticCurrentPhase,
+    ).length;
+    const nothingSaidYet = participantTurnsInPhase === 0;
+
+    // (1) repeat last probe ONLY if the participant hasn't answered yet
+    if (lastProbeText && !agenticSessionComplete && nothingSaidYet) {
+      console.log('[liveness] recovery=repeat (nothing said yet)');
       await safeSpeak(lastProbeText, lastProbeStrategy, currentEndpointingMode, currentExpectedAnswerType, 'liveness-watchdog', true);
       return;
     }
@@ -1262,6 +1280,11 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
     detector.onSystemSpeakingStart();
     lastUserSpeechAt = Date.now();
 
+    // New endpoint fired — cancel any settle-retry probe so we don't speak
+    // the parked probe on top of processing this new utterance.
+    if (settleRetryTimer) { clearTimeout(settleRetryTimer); settleRetryTimer = null; }
+    pendingSettleProbe = null;
+
     // Clear streaming cognition state — this utterance is committed, next
     // speech turn will build fresh context.
     earlyEvalPromise = null;
@@ -1835,9 +1858,17 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
         capture.writeProbe(nextProbe);
         await state.recordSystemProbe(nextText);
 
+        // Update lastProbeText NOW — before the settle window — so liveness
+        // recovery always has the correct probe even if settle aborts.
+        lastProbeText = nextText;
+        lastProbeStrategy = nextStrategy;
+
         // ── Settle window: 1500ms after decision before speaking ────────────
         // If the user resumes mid-sentence (natural pause between bursts), abort
         // the probe silently. Their continued speech will produce a fresh endpoint.
+        // If the resumed speech turns out to be noise (discarded), a retry timer
+        // will speak the probe after SETTLE_RETRY_MS to prevent the session
+        // going silent on late-arriving Deepgram words.
         if (thisTurnId === currentTurnId && !perTurnSpoken) {
           settleActive = true;
           settleAbortedFlag = false;
@@ -1845,11 +1876,45 @@ async function handleSession(ws: WebSocket, workshopId?: string): Promise<void> 
           settleActive = false;
           if (settleAbortedFlag) {
             console.log('[settle] aborted — user resumed speaking during settle window');
+            // Park the probe for retry. If no new endpoint fires within
+            // SETTLE_RETRY_MS, the retry timer will speak it automatically.
+            pendingSettleProbe = {
+              text: nextText,
+              strategy: nextStrategy,
+              endpointingMode: 'long_thought',
+              expectedAnswerType: 'open_explanation',
+              source: isTransition ? 'agentic-transition' : 'agentic-decision',
+              persist: false,
+              meta: { phase: agenticCurrentPhase, metadata: agenticResult.metadata as Record<string, unknown> },
+            };
+            if (settleRetryTimer) clearTimeout(settleRetryTimer);
+            settleRetryTimer = setTimeout(async () => {
+              settleRetryTimer = null;
+              if (!pendingSettleProbe || endpointHandling || activeTts) return;
+              const probe = pendingSettleProbe;
+              pendingSettleProbe = null;
+              // Honour the "never repeat if something was said" rule.
+              // If participant has already answered in this phase, don't repeat — liveness
+              // watchdog will handle recovery with a forward-moving question instead.
+              const phaseTurns = agenticSessionMessages.filter(
+                m => m.role === 'PARTICIPANT' && m.phase === agenticCurrentPhase,
+              ).length;
+              if (phaseTurns > 0 && probe.strategy === 'measure') {
+                console.log('[settle] retry suppressed — participant has already answered (measure probe)');
+                return;
+              }
+              console.log(`[settle] retry — speaking parked probe: "${probe.text.slice(0, 60)}"`);
+              await safeSpeak(probe.text, probe.strategy, probe.endpointingMode, probe.expectedAnswerType, probe.source, probe.persist, probe.meta);
+            }, SETTLE_RETRY_MS);
             armSilenceWatchdog();
             emitStateUpdate();
             return;
           }
         }
+
+        // Settle completed normally — cancel any outstanding retry timer and probe
+        if (settleRetryTimer) { clearTimeout(settleRetryTimer); settleRetryTimer = null; }
+        pendingSettleProbe = null;
 
         if (perTurnSpoken) {
           console.warn('[per-turn] double-speak prevented — dropping additional probe');
